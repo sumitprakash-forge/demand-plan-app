@@ -22,7 +22,6 @@ const TABS = [
 
 const DEFAULT_ACCOUNTS: AccountConfig[] = [
   { name: 'Kroger', sfdc_id: 'Kroger', sheetUrl: '' },
-  { name: '84.51', sfdc_id: '84.51', sheetUrl: '' },
 ];
 
 // Calculate use case monthly projection (same logic as ScenarioTab)

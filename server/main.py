@@ -224,6 +224,8 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
         except Exception as e:
             print(f"[summary] WARNING: could not fetch consumption for {account}: {e}")
             consumption = []
+            # Cache empty result to avoid re-querying on every request
+            _consumption_cache[account] = []
 
     # Get domain mapping
     mapping_list = None
