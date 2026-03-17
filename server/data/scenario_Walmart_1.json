@@ -1,10 +1,28 @@
 {
   "scenario_id": 1,
   "account": "Walmart",
-  "baseline_growth_rate": 0.02,
+  "baseline_growth_rate": 0.05,
   "growth_rates": {},
   "assumptions_text": "test",
-  "new_use_cases": [],
+  "new_use_cases": [
+    {
+      "id": "ae1bgc3",
+      "domain": "Data & Business Insights",
+      "name": "Informatica Migration",
+      "steadyStateDbu": 35000,
+      "onboardingMonth": 3,
+      "liveMonth": 8,
+      "rampType": "hockey_stick",
+      "scenarios": [
+        true,
+        false,
+        false
+      ],
+      "cloud": "aws",
+      "assumptions": "",
+      "skuBreakdown": []
+    }
+  ],
   "serverless_uplift_pct": 0.0,
   "global_growth_rate": 0.02
 }

@@ -187,10 +187,32 @@ async def get_sku_prices(account: str = Query(default="Walmart")):
 # Summary
 # ---------------------------------------------------------------------------
 
+def _calc_use_case_monthly(uc: dict) -> list[float]:
+    """Calculate 36-month projection for a use case with ramp."""
+    months = [0.0] * 36
+    ss = uc.get("steadyStateDbu") or uc.get("steady_state_dbu") or 0
+    om = uc.get("onboardingMonth") or uc.get("onboarding_month") or 1
+    lm = uc.get("liveMonth") or uc.get("live_month") or 6
+    ramp = uc.get("rampType") or uc.get("ramp_type") or "linear"
+    if ss <= 0 or lm <= om:
+        return months
+    ramp_months = lm - om
+    for i in range(36):
+        m = i + 1
+        if m < om:
+            months[i] = 0
+        elif m >= lm:
+            months[i] = ss
+        else:
+            progress = (m - om + 1) / (ramp_months + 1)
+            months[i] = ss * progress if ramp == "linear" else ss * (progress ** 2.5)
+    return months
+
+
 @app.get("/api/summary")
 async def get_summary(account: str = Query(default="Walmart"), scenario: int = Query(default=1)):
-    """Return demand plan summary for the given account and scenario."""
-    # Get consumption data
+    """Return demand plan summary — pulls projections from saved scenario config."""
+    # Get consumption data for baseline
     consumption = _consumption_cache.get(account) or _load_json(f"consumption_{account}") or []
 
     # Get domain mapping
@@ -205,95 +227,117 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
 
     # Aggregate T12M by domain
     domain_totals: dict[str, float] = defaultdict(float)
+    monthly_totals: dict[str, float] = defaultdict(float)
     for row in consumption:
         ws = row.get("workspace_name", "")
         domain = ws_to_domain.get(ws, "Unmapped")
         dbu = row.get("dollar_dbu_list", 0) or 0
         domain_totals[domain] += float(dbu)
+        month = row.get("month", "")
+        monthly_totals[month] += float(dbu)
 
     total_t12m = sum(domain_totals.values())
+    months_count = max(len(monthly_totals), 1)
+    avg_monthly = total_t12m / months_count
 
-    # Get scenario assumptions if any
+    # Get saved scenario config
     key = f"{account}_{scenario}"
-    scenario_data = _scenarios.get(key)
+    scenario_data = None
+    if key in _scenarios:
+        scenario_data = _scenarios[key].model_dump()
+    else:
+        scenario_data = _load_json(f"scenario_{key}")
 
-    # Default growth rates per scenario
-    default_growth = {1: 0.10, 2: 0.20, 3: 0.30}
-    growth = default_growth.get(scenario, 0.10)
-    serverless_uplift = 0.0
-    new_use_case_total = [0.0, 0.0, 0.0]
-
+    # Baseline growth rate
+    baseline_growth = 0.02  # default 2% MoM
     if scenario_data:
-        growth = sum(scenario_data.growth_rates.values()) / max(len(scenario_data.growth_rates), 1)
-        serverless_uplift = scenario_data.serverless_uplift_pct
-        for uc in scenario_data.new_use_cases:
-            new_use_case_total[0] += uc.get("year1_dbu", 0)
-            new_use_case_total[1] += uc.get("year2_dbu", 0)
-            new_use_case_total[2] += uc.get("year3_dbu", 0)
+        baseline_growth = scenario_data.get("baseline_growth_rate", 0.02)
+
+    # Calculate baseline projection (compound monthly growth)
+    mom_rate = baseline_growth / 12
+    baseline_year_totals = [0.0, 0.0, 0.0]
+    for i in range(36):
+        monthly = avg_monthly * ((1 + mom_rate) ** (i + 1))
+        baseline_year_totals[i // 12] += monthly
+
+    # Calculate use case projections (only for this scenario)
+    use_cases = (scenario_data or {}).get("new_use_cases", [])
+    active_ucs = [uc for uc in use_cases if uc.get("scenarios", [False, False, False])[scenario - 1]]
+
+    uc_rows = []
+    uc_year_totals = [0.0, 0.0, 0.0]
+    for uc in active_ucs:
+        uc_monthly = _calc_use_case_monthly(uc)
+        yt = [0.0, 0.0, 0.0]
+        for i, v in enumerate(uc_monthly):
+            yt[i // 12] += v
+            uc_year_totals[i // 12] += v
+        uc_rows.append({
+            "use_case_area": f"  ↳ {uc.get('name', 'Unnamed')}",
+            "year1": round(yt[0]),
+            "year2": round(yt[1]),
+            "year3": round(yt[2]),
+            "total": round(sum(yt)),
+            "is_use_case": True,
+        })
 
     # Build summary rows
-    existing_y1 = total_t12m * (1 + growth)
-    existing_y2 = existing_y1 * (1 + growth)
-    existing_y3 = existing_y2 * (1 + growth)
-
-    serverless_y1 = existing_y1 * serverless_uplift
-    serverless_y2 = existing_y2 * serverless_uplift
-    serverless_y3 = existing_y3 * serverless_uplift
-
     summary_rows = [
         {
-            "use_case_area": "Existing Live Use Cases",
-            "year1": round(existing_y1, 2),
-            "year2": round(existing_y2, 2),
-            "year3": round(existing_y3, 2),
-            "total": round(existing_y1 + existing_y2 + existing_y3, 2),
-        },
-        {
-            "use_case_area": "Serverless Optimization Uplift",
-            "year1": round(serverless_y1, 2),
-            "year2": round(serverless_y2, 2),
-            "year3": round(serverless_y3, 2),
-            "total": round(serverless_y1 + serverless_y2 + serverless_y3, 2),
-        },
-        {
-            "use_case_area": "New Use Cases",
-            "year1": round(new_use_case_total[0], 2),
-            "year2": round(new_use_case_total[1], 2),
-            "year3": round(new_use_case_total[2], 2),
-            "total": round(sum(new_use_case_total), 2),
+            "use_case_area": f"Existing Baseline ({baseline_growth*100:.1f}% MoM growth)",
+            "year1": round(baseline_year_totals[0]),
+            "year2": round(baseline_year_totals[1]),
+            "year3": round(baseline_year_totals[2]),
+            "total": round(sum(baseline_year_totals)),
         },
     ]
 
-    grand_total = {
+    # Add each use case as a sub-row
+    if uc_rows:
+        summary_rows.append({
+            "use_case_area": "New Use Cases",
+            "year1": round(uc_year_totals[0]),
+            "year2": round(uc_year_totals[1]),
+            "year3": round(uc_year_totals[2]),
+            "total": round(sum(uc_year_totals)),
+        })
+        summary_rows.extend(uc_rows)
+
+    # Grand total
+    grand_y1 = baseline_year_totals[0] + uc_year_totals[0]
+    grand_y2 = baseline_year_totals[1] + uc_year_totals[1]
+    grand_y3 = baseline_year_totals[2] + uc_year_totals[2]
+    summary_rows.append({
         "use_case_area": "Grand Total",
-        "year1": round(sum(r["year1"] for r in summary_rows), 2),
-        "year2": round(sum(r["year2"] for r in summary_rows), 2),
-        "year3": round(sum(r["year3"] for r in summary_rows), 2),
-        "total": round(sum(r["total"] for r in summary_rows), 2),
-    }
-    summary_rows.append(grand_total)
+        "year1": round(grand_y1),
+        "year2": round(grand_y2),
+        "year3": round(grand_y3),
+        "total": round(grand_y1 + grand_y2 + grand_y3),
+    })
 
     # Domain breakdown for pie chart
     domain_breakdown = [
-        {"domain": d, "value": round(v, 2)}
+        {"domain": d, "value": round(v)}
         for d, v in sorted(domain_totals.items(), key=lambda x: -x[1])
     ]
 
-    # Yearly trend for chart
+    # Yearly trend — show baseline + use cases stacked
     yearly_trend = [
-        {"year": "Year 1", "value": grand_total["year1"]},
-        {"year": "Year 2", "value": grand_total["year2"]},
-        {"year": "Year 3", "value": grand_total["year3"]},
+        {"year": "Year 1", "value": round(grand_y1), "baseline": round(baseline_year_totals[0]), "new_uc": round(uc_year_totals[0])},
+        {"year": "Year 2", "value": round(grand_y2), "baseline": round(baseline_year_totals[1]), "new_uc": round(uc_year_totals[1])},
+        {"year": "Year 3", "value": round(grand_y3), "baseline": round(baseline_year_totals[2]), "new_uc": round(uc_year_totals[2])},
     ]
 
     return {
         "account": account,
         "scenario": scenario,
-        "total_t12m": round(total_t12m, 2),
-        "growth_rate": growth,
+        "total_t12m": round(total_t12m),
+        "growth_rate": baseline_growth,
+        "avg_monthly": round(avg_monthly),
         "summary_rows": summary_rows,
         "domain_breakdown": domain_breakdown,
         "yearly_trend": yearly_trend,
+        "active_use_cases": len(active_ucs),
     }
 
 

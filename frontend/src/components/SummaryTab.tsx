@@ -110,7 +110,11 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
               <h2 className="text-lg font-semibold text-gray-900">
                 Demand Plan Summary — Scenario {scenario}
               </h2>
-              <p className="text-sm text-gray-500">T12M Base: {formatCurrency(data.total_t12m)} | Growth Rate: {(data.growth_rate * 100).toFixed(0)}%</p>
+              <p className="text-sm text-gray-500">
+                T12M Baseline: {formatCurrency(data.total_t12m)} |
+                Growth: {(data.growth_rate * 100).toFixed(1)}% MoM |
+                Active Use Cases: {data.active_use_cases || 0}
+              </p>
             </div>
             <table className="w-full">
               <thead>
@@ -123,22 +127,28 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {data.summary_rows.map((row: any, i: number) => (
-                  <tr
-                    key={i}
-                    className={`border-t ${
-                      row.use_case_area === 'Grand Total'
-                        ? 'bg-blue-50 font-bold'
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-sm">{row.use_case_area}</td>
-                    <td className="px-4 py-3 text-sm text-right">{formatCurrency(row.year1)}</td>
-                    <td className="px-4 py-3 text-sm text-right">{formatCurrency(row.year2)}</td>
-                    <td className="px-4 py-3 text-sm text-right">{formatCurrency(row.year3)}</td>
-                    <td className="px-4 py-3 text-sm text-right font-semibold">{formatCurrency(row.total)}</td>
-                  </tr>
-                ))}
+                {data.summary_rows.map((row: any, i: number) => {
+                  const isGrandTotal = row.use_case_area === 'Grand Total';
+                  const isUseCase = row.is_use_case;
+                  const isNewUCHeader = row.use_case_area === 'New Use Cases';
+                  return (
+                    <tr
+                      key={i}
+                      className={`border-t ${
+                        isGrandTotal ? 'bg-blue-50 font-bold border-t-2 border-gray-300' :
+                        isNewUCHeader ? 'bg-purple-50 font-semibold' :
+                        isUseCase ? 'text-gray-600' :
+                        'hover:bg-gray-50'
+                      }`}
+                    >
+                      <td className={`px-4 py-2.5 text-sm ${isUseCase ? 'pl-8 text-gray-500' : ''}`}>{row.use_case_area}</td>
+                      <td className="px-4 py-2.5 text-sm text-right">{formatCurrency(row.year1)}</td>
+                      <td className="px-4 py-2.5 text-sm text-right">{formatCurrency(row.year2)}</td>
+                      <td className="px-4 py-2.5 text-sm text-right">{formatCurrency(row.year3)}</td>
+                      <td className={`px-4 py-2.5 text-sm text-right ${isGrandTotal ? 'font-bold' : 'font-semibold'}`}>{formatCurrency(row.total)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -154,7 +164,9 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
                   <XAxis dataKey="year" />
                   <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
                   <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                  <Legend />
+                  <Bar dataKey="baseline" name="Existing Baseline" stackId="a" fill="#3B82F6" />
+                  <Bar dataKey="new_uc" name="New Use Cases" stackId="a" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
