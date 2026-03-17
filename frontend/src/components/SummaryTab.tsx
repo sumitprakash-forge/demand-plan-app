@@ -169,8 +169,18 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
       });
     }
 
-    loadData();
-  }, [accounts.map(a => a.name).join(',')]);
+    // Don't auto-fetch on account name change — wait for explicit Load button click
+    // Only auto-load on initial mount for accounts that have sfdc_id set
+  }, []);
+
+  // Auto-load on mount for pre-configured accounts
+  useEffect(() => {
+    const preConfigured = accounts.filter(a => a.sfdc_id?.trim());
+    if (preConfigured.length > 0) {
+      loadData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Use the first account's data for charts (domain breakdown)
   const firstAccountName = accounts[0]?.name || '';
@@ -261,17 +271,28 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                   placeholder="Google Sheets URL"
                 />
               </div>
-              <div>
-                <button
-                  onClick={() => loadData(acct.name)}
-                  disabled={loading}
-                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 disabled:opacity-50"
-                  title={`Refresh ${acct.name}`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
+              <div className="flex items-end gap-1">
+                {loadedAccountsRef.current.has(acct.name) ? (
+                  <button
+                    onClick={() => loadData(acct.name)}
+                    disabled={loading}
+                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 disabled:opacity-50"
+                    title={`Refresh ${acct.name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => loadData(acct.name)}
+                    disabled={loading || !acct.sfdc_id?.trim()}
+                    className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                    title={`Load data for ${acct.name}`}
+                  >
+                    Load
+                  </button>
+                )}
               </div>
             </div>
           ))}
