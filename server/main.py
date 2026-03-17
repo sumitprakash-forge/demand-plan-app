@@ -77,20 +77,30 @@ async def get_domain_mapping(sheet_url: str = Query(...)):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/consumption")
-async def get_consumption(account: str = Query(default="Walmart")):
-    """Query Logfood for trailing 12 months consumption."""
-    if account in _consumption_cache:
+async def get_consumption(account: str = Query(default="Walmart"), refresh: bool = Query(default=False)):
+    """Query Logfood for trailing 12 months consumption. Uses cache by default."""
+    # 1. In-memory cache (fastest)
+    if account in _consumption_cache and not refresh:
         return {"data": _consumption_cache[account]}
 
+    # 2. JSON file cache (survives restart)
+    if not refresh:
+        cached = _load_json(f"consumption_{account}")
+        if cached:
+            _consumption_cache[account] = cached
+            return {"data": cached, "source": "cached"}
+
+    # 3. Query Logfood (slow, only when no cache or refresh=true)
     try:
         rows = query_consumption(account)
         _consumption_cache[account] = rows
         _save_json(f"consumption_{account}", rows)
-        return {"data": rows}
+        return {"data": rows, "source": "logfood"}
     except Exception as e:
-        # Try loading from cache file
+        # Final fallback to JSON file
         cached = _load_json(f"consumption_{account}")
         if cached:
+            _consumption_cache[account] = cached
             return {"data": cached, "warning": f"Using cached data. Error: {str(e)}"}
         raise HTTPException(
             status_code=500,
@@ -130,16 +140,17 @@ async def get_sku_prices(account: str = Query(default="Walmart")):
     if account in _sku_price_cache:
         raw_rows = _sku_price_cache[account]
     else:
-        try:
-            raw_rows = query_sku_prices(account)
+        # Check JSON file cache first (fast)
+        cached = _load_json(f"sku_prices_{account}")
+        if cached:
+            raw_rows = cached
             _sku_price_cache[account] = raw_rows
-            _save_json(f"sku_prices_{account}", raw_rows)
-        except Exception as e:
-            cached = _load_json(f"sku_prices_{account}")
-            if cached:
-                raw_rows = cached
+        else:
+            try:
+                raw_rows = query_sku_prices(account)
                 _sku_price_cache[account] = raw_rows
-            else:
+                _save_json(f"sku_prices_{account}", raw_rows)
+            except Exception as e:
                 raise HTTPException(
                     status_code=500,
                     detail=f"SKU price query failed: {str(e)}",
