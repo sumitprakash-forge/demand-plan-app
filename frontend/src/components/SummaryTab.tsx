@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { fetchSummaryAll, fetchDomainMapping, formatCurrency } from '../api';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { fetchSummaryAll, fetchDomainMapping, fetchConsumption, formatCurrency } from '../api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import type { AccountConfig } from '../App';
 
@@ -24,57 +24,118 @@ interface AccountSummaryData {
   error?: string;
 }
 
+interface LoadingStep {
+  step: string;
+  done: boolean;
+  error?: string;
+}
+
 export default function SummaryTab({ accounts, setAccounts }: Props) {
   const [accountDataMap, setAccountDataMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loadingSteps, setLoadingSteps] = useState<Record<string, LoadingStep>>({});
   const [mappingLoadedFor, setMappingLoadedFor] = useState<Set<string>>(new Set());
+  const loadedAccountsRef = useRef<Set<string>>(new Set());
 
-  const loadData = useCallback(async () => {
+  const updateStep = (key: string, update: Partial<LoadingStep>) => {
+    setLoadingSteps(prev => ({
+      ...prev,
+      [key]: { ...prev[key], ...update },
+    }));
+  };
+
+  const loadData = useCallback(async (forceRefreshAccount?: string) => {
+    const accountsToFetch = forceRefreshAccount
+      ? accounts.filter(a => a.name === forceRefreshAccount)
+      : accounts.filter(a => a.name.trim() && !loadedAccountsRef.current.has(a.name));
+
+    if (accountsToFetch.length === 0 && !forceRefreshAccount) return;
+
     setLoading(true);
     setError('');
+
+    // Initialize loading steps for accounts being fetched
+    const initialSteps: Record<string, LoadingStep> = {};
+    accountsToFetch.forEach(a => {
+      if (a.sheetUrl && !mappingLoadedFor.has(a.name)) {
+        initialSteps[`${a.name}-mapping`] = { step: `${a.name} — loading domain mapping...`, done: false };
+      }
+      initialSteps[`${a.name}-consumption`] = { step: `${a.name} — fetching consumption from Logfood...`, done: false };
+      initialSteps[`${a.name}-summary`] = { step: `${a.name} — building summary...`, done: false };
+    });
+    setLoadingSteps(prev => {
+      // Keep completed steps from previously loaded accounts
+      const kept: Record<string, LoadingStep> = {};
+      Object.entries(prev).forEach(([k, v]) => {
+        if (v.done && !accountsToFetch.some(a => k.startsWith(a.name))) {
+          kept[k] = v;
+        }
+      });
+      return { ...kept, ...initialSteps };
+    });
+
     try {
-      // Load domain mappings for accounts that have sheet URLs
-      const mappingPromises = accounts
-        .filter(a => a.sheetUrl && !mappingLoadedFor.has(a.name))
-        .map(async (a) => {
+      // Process each account sequentially for clear progress, but could be parallel
+      const newDataMap: Record<string, any> = {};
+      const errors: string[] = [];
+
+      await Promise.all(accountsToFetch.map(async (a) => {
+        // Step 1: Load domain mapping if needed
+        if (a.sheetUrl && !mappingLoadedFor.has(a.name)) {
           try {
             await fetchDomainMapping(a.sheetUrl);
-            return a.name;
+            updateStep(`${a.name}-mapping`, { step: `${a.name} — domain mapping loaded`, done: true });
+            setMappingLoadedFor(prev => {
+              const next = new Set(prev);
+              next.add(a.name);
+              return next;
+            });
           } catch (e: any) {
+            updateStep(`${a.name}-mapping`, { step: `${a.name} — domain mapping failed: ${e.message}`, done: true, error: e.message });
             console.warn(`Domain mapping load warning for ${a.name}:`, e.message);
-            return null;
           }
-        });
+        }
 
-      const loadedNames = (await Promise.all(mappingPromises)).filter(Boolean) as string[];
-      if (loadedNames.length > 0) {
-        setMappingLoadedFor(prev => {
-          const next = new Set(prev);
-          loadedNames.forEach(n => next.add(n));
-          return next;
-        });
-      }
+        // Step 2: Fetch consumption data (for row count display)
+        let rowCount = 0;
+        try {
+          const consumptionRes = await fetchConsumption(a.sfdc_id || a.name);
+          rowCount = consumptionRes?.data?.length || 0;
+          updateStep(`${a.name}-consumption`, { step: `${a.name} — consumption data (${rowCount.toLocaleString()} rows)`, done: true });
+        } catch (e: any) {
+          updateStep(`${a.name}-consumption`, { step: `${a.name} — consumption fetch failed: ${e.message}`, done: true, error: e.message });
+        }
 
-      // Fetch summary data for all accounts in parallel
-      const results = await Promise.all(
-        accounts.filter(a => a.name.trim()).map(async (a) => {
-          try {
-            const result = await fetchSummaryAll(a.sfdc_id || a.name);
-            return { accountName: a.name, data: result };
-          } catch (e: any) {
-            return { accountName: a.name, data: null, error: e.message };
+        // Step 3: Fetch summary
+        updateStep(`${a.name}-summary`, { step: `${a.name} — building summary...`, done: false });
+        try {
+          const result = await fetchSummaryAll(a.sfdc_id || a.name);
+          newDataMap[a.name] = result;
+          updateStep(`${a.name}-summary`, { step: `${a.name} — summary ready`, done: true });
+          loadedAccountsRef.current.add(a.name);
+        } catch (e: any) {
+          updateStep(`${a.name}-summary`, { step: `${a.name} — summary failed: ${e.message}`, done: true, error: e.message });
+          errors.push(`${a.name}: ${e.message}`);
+        }
+      }));
+
+      // Merge new data into existing map (don't replace existing data for accounts we didn't fetch)
+      setAccountDataMap(prev => {
+        const merged = { ...prev };
+        // If force refreshing, replace that account's data
+        if (forceRefreshAccount) {
+          if (newDataMap[forceRefreshAccount]) {
+            merged[forceRefreshAccount] = newDataMap[forceRefreshAccount];
           }
-        })
-      );
-
-      const dataMap: Record<string, any> = {};
-      results.forEach(r => {
-        if (r.data) dataMap[r.accountName] = r.data;
+        } else {
+          Object.entries(newDataMap).forEach(([k, v]) => {
+            merged[k] = v;
+          });
+        }
+        return merged;
       });
-      setAccountDataMap(dataMap);
 
-      const errors = results.filter(r => r.error).map(r => `${r.accountName}: ${r.error}`);
       if (errors.length > 0) setError(errors.join('; '));
     } catch (e: any) {
       setError(e.message);
@@ -83,7 +144,31 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
     }
   }, [accounts, mappingLoadedFor]);
 
+  // Track previous account names to detect additions/removals
+  const prevAccountNamesRef = useRef<string>(accounts.map(a => a.name).join(','));
+
   useEffect(() => {
+    const currentNames = accounts.map(a => a.name).join(',');
+    const prevNames = prevAccountNamesRef.current;
+    prevAccountNamesRef.current = currentNames;
+
+    // On initial load, or when account names change
+    if (prevNames !== currentNames) {
+      // Clean up removed accounts
+      const currentNameSet = new Set(accounts.map(a => a.name));
+      setAccountDataMap(prev => {
+        const cleaned: Record<string, any> = {};
+        Object.entries(prev).forEach(([k, v]) => {
+          if (currentNameSet.has(k)) cleaned[k] = v;
+        });
+        return cleaned;
+      });
+      // Remove from loadedAccountsRef
+      loadedAccountsRef.current.forEach(name => {
+        if (!currentNameSet.has(name)) loadedAccountsRef.current.delete(name);
+      });
+    }
+
     loadData();
   }, [accounts.map(a => a.name).join(',')]);
 
@@ -141,14 +226,18 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700">Account Configuration</label>
             <button
-              onClick={loadData}
+              onClick={() => {
+                // Force refresh all loaded accounts
+                loadedAccountsRef.current.clear();
+                loadData();
+              }}
               className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
             >
-              Refresh
+              Refresh All
             </button>
           </div>
           {accounts.map((acct, idx) => (
-            <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-4 items-end">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Account Name</label>
                 <input
@@ -158,7 +247,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-50 text-sm"
                 />
               </div>
-              <div className="md:col-span-2">
+              <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Domain Mapping Sheet URL — {acct.name}</label>
                 <input
                   type="text"
@@ -172,12 +261,55 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                   placeholder="Google Sheets URL"
                 />
               </div>
+              <div>
+                <button
+                  onClick={() => loadData(acct.name)}
+                  disabled={loading}
+                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 disabled:opacity-50"
+                  title={`Refresh ${acct.name}`}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {loading && <div className="text-center py-8 text-gray-500">Loading summary data...</div>}
+      {/* Loading Progress Steps */}
+      {loading && (
+        <div className="bg-white rounded-lg shadow p-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Loading Demand Plan...</h3>
+          <div className="space-y-2">
+            {Object.entries(loadingSteps).map(([key, step]) => (
+              <div key={key} className="flex items-center gap-2 text-sm">
+                {step.done ? (
+                  step.error ? (
+                    <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )
+                ) : (
+                  <svg className="w-4 h-4 text-blue-500 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+                <span className={step.error ? 'text-red-600' : step.done ? 'text-gray-600' : 'text-blue-600'}>
+                  {step.step}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{error}</div>}
 
       {activeAccounts.length > 0 && (

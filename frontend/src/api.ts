@@ -6,8 +6,9 @@ export async function fetchDomainMapping(sheetUrl: string) {
   return res.json();
 }
 
-export async function fetchConsumption(account: string) {
-  const res = await fetch(`${BASE}/consumption?account=${encodeURIComponent(account)}`);
+export async function fetchConsumption(account: string, refresh = false) {
+  const url = `${BASE}/consumption?account=${encodeURIComponent(account)}${refresh ? '&refresh=true' : ''}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

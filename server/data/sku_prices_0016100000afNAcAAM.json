@@ -1,0 +1,142 @@
+[
+  {
+    "sku": "INTERNET_EGRESS_NORTH_AMERICA",
+    "cloud": "azure",
+    "list_price": 0.087
+  },
+  {
+    "sku": "INTER_REGION_EGRESS_FROM_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.02
+  },
+  {
+    "sku": "INTER_REGION_EGRESS_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.02
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.95
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.75
+  },
+  {
+    "sku": "PREMIUM_ANTHROPIC_MODEL_SERVING",
+    "cloud": "azure",
+    "list_price": 0.105
+  },
+  {
+    "sku": "PREMIUM_DATABASE_SERVERLESS_COMPUTE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.52
+  },
+  {
+    "sku": "PREMIUM_DATABRICKS_STORAGE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.023
+  },
+  {
+    "sku": "PREMIUM_DATABRICKS_STORAGE_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.023
+  },
+  {
+    "sku": "PREMIUM_DLT_ADVANCED_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.54
+  },
+  {
+    "sku": "PREMIUM_DLT_ADVANCED_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.54
+  },
+  {
+    "sku": "PREMIUM_DLT_CORE_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.3
+  },
+  {
+    "sku": "PREMIUM_DLT_CORE_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.3
+  },
+  {
+    "sku": "PREMIUM_DLT_PRO_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.38
+  },
+  {
+    "sku": "PREMIUM_JOBS_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.3
+  },
+  {
+    "sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.3
+  },
+  {
+    "sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.45
+  },
+  {
+    "sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.35
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.07
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SQL_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.22
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PRIVATE_CONNECTIVITY_ENDPOINT",
+    "cloud": "azure",
+    "list_price": 0.01
+  },
+  {
+    "sku": "PUBLIC_CONNECTIVITY_DATA_PROCESSED",
+    "cloud": "azure",
+    "list_price": 0.045
+  },
+  {
+    "sku": "PUBLIC_CONNECTIVITY_DATA_PROCESSED_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.045
+  }
+]

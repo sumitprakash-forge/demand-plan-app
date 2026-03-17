@@ -952,13 +952,14 @@ export default function ScenarioTab({ accounts }: Props) {
         </div>
       )}
 
-      {selectedAccount && (
-        <ScenarioAccountView
-          key={selectedAccount.name}
-          account={selectedAccount.sfdc_id || selectedAccount.name}
-          sheetUrl={selectedAccount.sheetUrl}
-        />
-      )}
+      {accounts.map((acct, i) => (
+        <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
+          <ScenarioAccountView
+            account={acct.sfdc_id || acct.name}
+            sheetUrl={acct.sheetUrl}
+          />
+        </div>
+      ))}
     </div>
   );
 }

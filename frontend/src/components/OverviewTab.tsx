@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { fetchAccountOverview, formatCurrency } from '../api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -20,14 +20,17 @@ function OverviewAccountView({ account }: { account: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const dataLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (dataLoadedRef.current) return;
     const load = async () => {
       setLoading(true);
       setError('');
       try {
         const res = await fetchAccountOverview(account);
         setData(res);
+        dataLoadedRef.current = true;
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -162,12 +165,13 @@ export default function OverviewTab({ accounts }: Props) {
         </div>
       )}
 
-      {selectedAccount && (
-        <OverviewAccountView
-          key={selectedAccount.name}
-          account={selectedAccount.sfdc_id || selectedAccount.name}
-        />
-      )}
+      {accounts.map((acct, i) => (
+        <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
+          <OverviewAccountView
+            account={acct.sfdc_id || acct.name}
+          />
+        </div>
+      ))}
     </div>
   );
 }

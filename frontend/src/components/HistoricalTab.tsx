@@ -23,7 +23,9 @@ function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUr
   const [expandedCloudDomains, setExpandedCloudDomains] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadData = async () => {
+  const dataLoadedRef = useRef(false);
+
+  const loadData = async (forceRefresh = false) => {
     setLoading(true);
     setError('');
     setWarning('');
@@ -47,8 +49,9 @@ function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUr
           console.warn('Domain mapping error:', e.message);
         }
       }
-      const res = await fetchConsumption(account);
+      const res = await fetchConsumption(account, forceRefresh);
       setData(res.data || []);
+      dataLoadedRef.current = true;
       if (res.warning) setWarning(res.warning);
     } catch (e: any) {
       setError(e.message);
@@ -57,7 +60,11 @@ function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUr
     }
   };
 
-  useEffect(() => { loadData(); }, [account]);
+  useEffect(() => {
+    if (!dataLoadedRef.current) {
+      loadData();
+    }
+  }, [account]);
 
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -474,7 +481,7 @@ function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUr
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Historical Consumption — {account}</h2>
         <div className="flex items-center gap-3">
-          <button onClick={loadData} disabled={loading}
+          <button onClick={() => loadData(true)} disabled={loading}
             className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
             {loading ? 'Loading...' : 'Refresh from Logfood'}
           </button>
@@ -601,13 +608,14 @@ export default function HistoricalTab({ accounts }: Props) {
         </div>
       )}
 
-      {selectedAccount && (
-        <HistoricalAccountView
-          key={selectedAccount.name}
-          account={selectedAccount.sfdc_id || selectedAccount.name}
-          sheetUrl={selectedAccount.sheetUrl}
-        />
-      )}
+      {accounts.map((acct, i) => (
+        <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
+          <HistoricalAccountView
+            account={acct.sfdc_id || acct.name}
+            sheetUrl={acct.sheetUrl}
+          />
+        </div>
+      ))}
     </div>
   );
 }

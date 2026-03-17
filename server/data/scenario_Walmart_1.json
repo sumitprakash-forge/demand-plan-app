@@ -3,24 +3,30 @@
   "account": "Walmart",
   "baseline_growth_rate": 0.05,
   "growth_rates": {},
-  "assumptions_text": "test",
+  "assumptions_text": "Test assumptions for scenario 1",
   "new_use_cases": [
     {
-      "id": "ae1bgc3",
+      "id": "test123",
       "domain": "Data & Business Insights",
-      "name": "Informatica Migration",
+      "name": "Informatica Migration Test",
       "steadyStateDbu": 35000,
       "onboardingMonth": 3,
       "liveMonth": 8,
-      "rampType": "hockey_stick",
+      "rampType": "linear",
       "scenarios": [
         true,
         false,
         false
       ],
-      "cloud": "aws",
-      "assumptions": "",
-      "skuBreakdown": []
+      "cloud": "azure",
+      "assumptions": "Test migration scenario",
+      "skuBreakdown": [
+        {
+          "sku": "Premium Jobs Compute",
+          "cloud": "azure",
+          "monthlyDbu": 10000
+        }
+      ]
     }
   ],
   "serverless_uplift_pct": 0.0,
