@@ -355,7 +355,7 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
     default_descriptions = {
         1: "Existing Live Use Cases + Baseline Growth",
         2: "Scenario 1 + Mid-term Use Cases",
-        3: "Scenario 2 + Long-term Migrations + Agentic AI",
+        3: "Scenario 2 + Long-term Use Cases",
     }
     description = (scenario_data or {}).get("assumptions_text", "").strip()
     if not description:
