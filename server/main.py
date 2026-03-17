@@ -1,11 +1,13 @@
 """Demand Plan App — FastAPI backend."""
 
+import asyncio
 import csv
 import io
 import json
 import os
 import traceback
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
@@ -26,6 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Thread pool for blocking Logfood queries
+_executor = ThreadPoolExecutor(max_workers=4)
+
 # In-memory stores (persisted to JSON files in data/)
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -36,6 +41,38 @@ _consumption_cache: dict[str, list[dict]] = {}
 _scenarios: dict[str, ScenarioAssumptions] = {}
 _forecast_overrides: dict[str, list[dict]] = {}
 _sku_price_cache: dict[str, list[dict]] = {}
+
+
+def _preload_caches():
+    """Preload all JSON file caches into memory on startup."""
+    count = 0
+    for f in DATA_DIR.glob("*.json"):
+        try:
+            with open(f) as fh:
+                data = json.load(fh)
+            name = f.stem  # e.g., "consumption_Kroger"
+            if name.startswith("consumption_") and isinstance(data, list) and len(data) > 0:
+                key = name[len("consumption_"):]
+                _consumption_cache[key] = data
+                count += 1
+            elif name.startswith("sku_prices_") and isinstance(data, list):
+                key = name[len("sku_prices_"):]
+                _sku_price_cache[key] = data
+                count += 1
+            elif name.startswith("scenario_") and isinstance(data, dict):
+                key = name[len("scenario_"):]
+                _scenarios[key] = ScenarioAssumptions(**data)
+                count += 1
+            elif name == "domain_mapping" and isinstance(data, list):
+                _domain_mapping_cache["default"] = data
+                count += 1
+        except Exception as e:
+            print(f"[preload] WARNING: failed to load {f.name}: {e}")
+    print(f"[preload] Loaded {count} cached files into memory")
+
+
+# Preload on module import
+_preload_caches()
 
 
 def _load_json(name: str) -> dict | list | None:
@@ -90,9 +127,10 @@ async def get_consumption(account: str = Query(default="Walmart"), refresh: bool
             _consumption_cache[account] = cached
             return {"data": cached, "source": "cached"}
 
-    # 3. Query Logfood (slow, only when no cache or refresh=true)
+    # 3. Query Logfood async (slow, only when no cache or refresh=true)
     try:
-        rows = query_consumption(account)
+        loop = asyncio.get_event_loop()
+        rows = await loop.run_in_executor(_executor, query_consumption, account)
         _consumption_cache[account] = rows
         _save_json(f"consumption_{account}", rows)
         return {"data": rows, "source": "logfood"}
@@ -229,7 +267,8 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
         consumption = _load_json(f"consumption_{account}")
     if not consumption:
         try:
-            consumption = query_consumption(account)
+            loop = asyncio.get_event_loop()
+            consumption = await loop.run_in_executor(_executor, query_consumption, account)
             _consumption_cache[account] = consumption
             _save_json(f"consumption_{account}", consumption)
         except Exception as e:
@@ -377,11 +416,13 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
 
 @app.get("/api/summary-all")
 async def get_summary_all(account: str = Query(default="Walmart")):
-    """Return summary for all 3 scenarios."""
-    results = []
-    for s in [1, 2, 3]:
-        results.append(await get_summary(account, s))
-    return {"account": account, "scenarios": results}
+    """Return summary for all 3 scenarios (fetched in parallel)."""
+    results = await asyncio.gather(
+        get_summary(account, 1),
+        get_summary(account, 2),
+        get_summary(account, 3),
+    )
+    return {"account": account, "scenarios": list(results)}
 
 
 # ---------------------------------------------------------------------------
@@ -565,4 +606,4 @@ if FRONTEND_DIST.exists():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=4)
