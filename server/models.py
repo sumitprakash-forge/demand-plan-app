@@ -5,10 +5,12 @@ from typing import Optional
 class ScenarioAssumptions(BaseModel):
     scenario_id: int  # 1, 2, or 3
     account: str
-    growth_rates: dict[str, float]  # domain -> annual growth rate
-    assumptions_text: str
-    new_use_cases: list[dict]  # [{domain, name, year1_dbu, year2_dbu, year3_dbu}]
-    serverless_uplift_pct: float  # e.g. 0.15 for 15%
+    baseline_growth_rate: float = 0.02  # MoM growth rate (e.g., 0.02 = 2%)
+    growth_rates: dict[str, float] = {}  # legacy: domain -> growth rate (optional)
+    assumptions_text: str = ""
+    new_use_cases: list[dict] = []  # [{id, name, domain, steadyStateDbu, onboardingMonth, liveMonth, rampType, scenarios}]
+    serverless_uplift_pct: float = 0.0  # legacy (optional)
+    global_growth_rate: float = 0.02  # legacy alias (optional)
 
 
 class ForecastOverride(BaseModel):
@@ -20,4 +22,4 @@ class ForecastOverride(BaseModel):
 
 class ForecastUpdate(BaseModel):
     account: str
-    overrides: list[ForecastOverride]
+    overrides: list[ForecastOverride] = []

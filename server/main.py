@@ -14,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 
 from models import ScenarioAssumptions, ForecastUpdate
 from sheets import fetch_domain_mapping
-from logfood import query_consumption
+from logfood import query_consumption, query_sku_prices
+from sku_mapping import get_friendly_name
 
 app = FastAPI(title="Demand Plan App")
 
@@ -34,6 +35,7 @@ _domain_mapping_cache: dict[str, list[dict]] = {}
 _consumption_cache: dict[str, list[dict]] = {}
 _scenarios: dict[str, ScenarioAssumptions] = {}
 _forecast_overrides: dict[str, list[dict]] = {}
+_sku_price_cache: dict[str, list[dict]] = {}
 
 
 def _load_json(name: str) -> dict | list | None:
@@ -116,6 +118,69 @@ async def upload_consumption(account: str = Query(default="Walmart"), file: Uplo
     _consumption_cache[account] = rows
     _save_json(f"consumption_{account}", rows)
     return {"data": rows, "count": len(rows)}
+
+
+# ---------------------------------------------------------------------------
+# SKU Prices
+# ---------------------------------------------------------------------------
+
+@app.get("/api/sku-prices")
+async def get_sku_prices(account: str = Query(default="Walmart")):
+    """Get distinct SKU + cloud + list_price from Logfood."""
+    if account in _sku_price_cache:
+        raw_rows = _sku_price_cache[account]
+    else:
+        try:
+            raw_rows = query_sku_prices(account)
+            _sku_price_cache[account] = raw_rows
+            _save_json(f"sku_prices_{account}", raw_rows)
+        except Exception as e:
+            cached = _load_json(f"sku_prices_{account}")
+            if cached:
+                raw_rows = cached
+                _sku_price_cache[account] = raw_rows
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"SKU price query failed: {str(e)}",
+                )
+
+    # Build sku_prices list with friendly names
+    sku_prices = []
+    clouds_set = set()
+    for row in raw_rows:
+        raw_sku = row.get("sku", "")
+        cloud = row.get("cloud", "")
+        list_price = row.get("list_price", 0)
+        friendly = get_friendly_name(raw_sku)
+        sku_prices.append({
+            "raw_sku": raw_sku,
+            "friendly_name": friendly,
+            "cloud": cloud,
+            "list_price": list_price,
+        })
+        clouds_set.add(cloud)
+
+    # Group by friendly_name -> cloud -> price
+    friendly_map: dict[str, dict[str, float]] = {}
+    for sp in sku_prices:
+        fn = sp["friendly_name"]
+        if fn not in friendly_map:
+            friendly_map[fn] = {}
+        # Keep the max price if multiple raw SKUs map to same friendly name + cloud
+        existing = friendly_map[fn].get(sp["cloud"], 0)
+        friendly_map[fn][sp["cloud"]] = max(existing, sp["list_price"])
+
+    friendly_skus = [
+        {"friendly_name": fn, "clouds": clouds}
+        for fn, clouds in sorted(friendly_map.items())
+    ]
+
+    return {
+        "sku_prices": sku_prices,
+        "clouds": sorted(clouds_set),
+        "friendly_skus": friendly_skus,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,14 @@ interface ExportOptions {
     rampType: string;
     scenarios: boolean[];
     monthlyProjection: number[];
+    cloud?: string;
+    assumptions?: string;
+    skuBreakdown?: {
+      sku: string;
+      percentage: number;
+      dbus: number;
+      dollarDbu: number;
+    }[];
   }[];
   projections: {
     baseYearTotals: number[];
@@ -291,6 +299,45 @@ export function exportToXLS(opts: ExportOptions) {
   applyDollarFormat(ws7);
   applyPercentFormat(ws7, 3, 3);
   XLSX.utils.book_append_sheet(wb, ws7, 'Domain Baseline');
+
+  // ── Sheet 8: Use Case SKU Breakdown ──
+  const skuBdRows: any[][] = [
+    ['Use Case SKU Breakdown'],
+    [''],
+    ['Use Case Name', 'SKU', 'Cloud', '% Split', 'DBUs/mo', '$/DBU', '$/month', 'Assumptions'],
+  ];
+  opts.useCases.forEach(uc => {
+    if (uc.skuBreakdown && uc.skuBreakdown.length > 0) {
+      uc.skuBreakdown.forEach((alloc, idx) => {
+        const price = alloc.dbus > 0 ? alloc.dollarDbu / alloc.dbus : 0;
+        skuBdRows.push([
+          idx === 0 ? uc.name : '',
+          alloc.sku,
+          uc.cloud || '',
+          alloc.percentage / 100,
+          Math.round(alloc.dbus),
+          price,
+          alloc.dollarDbu,
+          idx === 0 ? (uc.assumptions || '') : '',
+        ]);
+      });
+      // Subtotal row per use case
+      const totalDbus = uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
+      const totalDollar = uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
+      const totalPct = uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0);
+      const avgPrice = totalDbus > 0 ? totalDollar / totalDbus : 0;
+      skuBdRows.push([
+        '', 'SUBTOTAL', '', totalPct / 100, Math.round(totalDbus), avgPrice, totalDollar, '',
+      ]);
+    }
+  });
+
+  const ws8 = XLSX.utils.aoa_to_sheet(skuBdRows);
+  ws8['!cols'] = [{ wch: 30 }, { wch: 25 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 50 }];
+  applyDollarFormat(ws8);
+  // Apply % format to column D (index 3) from row 3 onward
+  applyPercentFormat(ws8, 3, 3);
+  XLSX.utils.book_append_sheet(wb, ws8, 'Use Case SKU Breakdown');
 
   // Generate and save
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

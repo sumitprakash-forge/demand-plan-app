@@ -1,0 +1,212 @@
+[
+  {
+    "sku": "INTERNET_EGRESS_NORTH_AMERICA",
+    "cloud": "azure",
+    "list_price": 0.087
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_COMPUTE",
+    "cloud": "gcp",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)",
+    "cloud": "gcp",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_EAST",
+    "cloud": "azure",
+    "list_price": 0.95
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.75
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_IOWA",
+    "cloud": "gcp",
+    "list_price": 0.75
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_VIRGINIA",
+    "cloud": "gcp",
+    "list_price": 0.75
+  },
+  {
+    "sku": "PREMIUM_ALL_PURPOSE_SERVERLESS_COMPUTE_US_WEST_2",
+    "cloud": "azure",
+    "list_price": 0.95
+  },
+  {
+    "sku": "PREMIUM_CLEAN_ROOMS_COLLABORATOR",
+    "cloud": "gcp",
+    "list_price": 50.0
+  },
+  {
+    "sku": "PREMIUM_DATABRICKS_STORAGE_US_EAST_OHIO",
+    "cloud": "aws",
+    "list_price": 0.023
+  },
+  {
+    "sku": "PREMIUM_DLT_ADVANCED_COMPUTE",
+    "cloud": "gcp",
+    "list_price": 0.36
+  },
+  {
+    "sku": "PREMIUM_DLT_ADVANCED_COMPUTE_(PHOTON)",
+    "cloud": "gcp",
+    "list_price": 0.36
+  },
+  {
+    "sku": "PREMIUM_DLT_CORE_COMPUTE_(PHOTON)",
+    "cloud": "gcp",
+    "list_price": 0.2
+  },
+  {
+    "sku": "PREMIUM_JOBS_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.3
+  },
+  {
+    "sku": "PREMIUM_JOBS_COMPUTE",
+    "cloud": "gcp",
+    "list_price": 0.15
+  },
+  {
+    "sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.3
+  },
+  {
+    "sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)",
+    "cloud": "gcp",
+    "list_price": 0.15
+  },
+  {
+    "sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE_US_EAST",
+    "cloud": "azure",
+    "list_price": 0.45
+  },
+  {
+    "sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE_US_IOWA",
+    "cloud": "gcp",
+    "list_price": 0.35
+  },
+  {
+    "sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE_US_VIRGINIA",
+    "cloud": "gcp",
+    "list_price": 0.35
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE_US_EAST",
+    "cloud": "azure",
+    "list_price": 0.07
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE_US_IOWA",
+    "cloud": "gcp",
+    "list_price": 0.07
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE_US_VIRGINIA",
+    "cloud": "gcp",
+    "list_price": 0.07
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_EAST",
+    "cloud": "azure",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_IOWA",
+    "cloud": "gcp",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_SOUTH_CENTRAL",
+    "cloud": "azure",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_VIRGINIA",
+    "cloud": "gcp",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SERVERLESS_SQL_COMPUTE_US_WEST_2",
+    "cloud": "azure",
+    "list_price": 0.7
+  },
+  {
+    "sku": "PREMIUM_SQL_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.22
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_EAST",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_EAST_2",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_IOWA",
+    "cloud": "gcp",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_SOUTH_CENTRAL",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_VIRGINIA",
+    "cloud": "gcp",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PREMIUM_SQL_PRO_COMPUTE_US_WEST_2",
+    "cloud": "azure",
+    "list_price": 0.55
+  },
+  {
+    "sku": "PUBLIC_CONNECTIVITY_DATA_PROCESSED",
+    "cloud": "azure",
+    "list_price": 0.045
+  },
+  {
+    "sku": "STANDARD_ALL_PURPOSE_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.4
+  },
+  {
+    "sku": "STANDARD_ALL_PURPOSE_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.4
+  },
+  {
+    "sku": "STANDARD_JOBS_COMPUTE",
+    "cloud": "azure",
+    "list_price": 0.15
+  },
+  {
+    "sku": "STANDARD_JOBS_COMPUTE_(PHOTON)",
+    "cloud": "azure",
+    "list_price": 0.15
+  }
+]

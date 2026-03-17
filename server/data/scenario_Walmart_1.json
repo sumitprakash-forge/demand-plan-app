@@ -1,0 +1,10 @@
+{
+  "scenario_id": 1,
+  "account": "Walmart",
+  "baseline_growth_rate": 0.02,
+  "growth_rates": {},
+  "assumptions_text": "test",
+  "new_use_cases": [],
+  "serverless_uplift_pct": 0.0,
+  "global_growth_rate": 0.02
+}

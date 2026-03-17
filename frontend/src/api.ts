@@ -61,6 +61,12 @@ export async function saveForecast(account: string, overrides: any[]) {
   return res.json();
 }
 
+export async function fetchSkuPrices(account: string) {
+  const res = await fetch(`${BASE}/sku-prices?account=${encodeURIComponent(account)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function fetchAccountOverview(account: string) {
   const res = await fetch(`${BASE}/account-overview?account=${encodeURIComponent(account)}`);
   if (!res.ok) throw new Error(await res.text());

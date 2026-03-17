@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMapping, formatCurrency } from '../api';
+import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMapping, fetchSkuPrices, formatCurrency } from '../api';
 
 interface Props {
   account: string;
@@ -29,6 +29,13 @@ function fmtShort(v: number): string {
   return `$${v}`;
 }
 
+interface SKUAllocation {
+  sku: string;        // friendly name
+  percentage: number; // 0-100
+  dbus: number;       // monthly DBU volume (auto-calc from percentage x total DBUs)
+  dollarDbu: number;  // auto-calc: percentage x steadyStateDbu / 100
+}
+
 interface NewUseCase {
   id: string;
   domain: string;
@@ -38,6 +45,9 @@ interface NewUseCase {
   liveMonth: number;       // 1-36, must be >= onboarding
   rampType: RampType;
   scenarios: boolean[];    // [scenario1, scenario2, scenario3]
+  cloud: string;           // which cloud this use case runs on
+  assumptions: string;     // free text per use case
+  skuBreakdown: SKUAllocation[];  // per-SKU split
 }
 
 interface DomainBaseline {
@@ -47,6 +57,55 @@ interface DomainBaseline {
   t3m: number;
   avgMonthly: number;
 }
+
+const WORKLOAD_PRESETS = [
+  {
+    key: 'etl', label: 'ETL Pipeline',
+    skus: [
+      { sku: 'Jobs Compute', percentage: 50 },
+      { sku: 'Jobs Compute (Photon)', percentage: 30 },
+      { sku: 'DLT Core', percentage: 20 },
+    ]
+  },
+  {
+    key: 'bi', label: 'BI / Analytics',
+    skus: [
+      { sku: 'Serverless SQL', percentage: 60 },
+      { sku: 'All Purpose Compute', percentage: 25 },
+      { sku: 'Jobs Compute', percentage: 15 },
+    ]
+  },
+  {
+    key: 'ml', label: 'ML Platform',
+    skus: [
+      { sku: 'All Purpose Compute', percentage: 35 },
+      { sku: 'Model Serving', percentage: 30 },
+      { sku: 'Jobs Compute', percentage: 25 },
+      { sku: 'Serverless SQL', percentage: 10 },
+    ]
+  },
+  {
+    key: 'agentic', label: 'Agentic AI',
+    skus: [
+      { sku: 'Foundation Model API', percentage: 40 },
+      { sku: 'Model Serving', percentage: 25 },
+      { sku: 'Vector Search', percentage: 20 },
+      { sku: 'Serverless SQL', percentage: 15 },
+    ]
+  },
+  {
+    key: 'migration', label: 'Migration Workload',
+    skus: [
+      { sku: 'Jobs Compute (Photon)', percentage: 45 },
+      { sku: 'Serverless SQL', percentage: 30 },
+      { sku: 'DLT Advanced', percentage: 25 },
+    ]
+  },
+  {
+    key: 'custom', label: 'Custom',
+    skus: []
+  },
+];
 
 function generateId() {
   return Math.random().toString(36).substring(2, 9);
@@ -71,12 +130,27 @@ function calcUseCaseMonthly(uc: NewUseCase): number[] {
       if (uc.rampType === 'linear') {
         months[i] = uc.steadyStateDbu * progress;
       } else {
-        // Hockey stick: exponential curve — slow start, fast finish
+        // Hockey stick: exponential curve -- slow start, fast finish
         months[i] = uc.steadyStateDbu * Math.pow(progress, 2.5);
       }
     }
   }
   return months;
+}
+
+// Recalculate SKU breakdown based on steadyStateDbu, percentages, and prices
+function recalcSkuBreakdown(
+  skuBreakdown: SKUAllocation[],
+  steadyStateDbu: number,
+  cloud: string,
+  skuPriceMap: Record<string, Record<string, number>>
+): SKUAllocation[] {
+  return skuBreakdown.map(alloc => {
+    const dollarDbu = steadyStateDbu * alloc.percentage / 100;
+    const price = skuPriceMap[alloc.sku]?.[cloud] || 0;
+    const dbus = price > 0 ? dollarDbu / price : 0;
+    return { ...alloc, dollarDbu, dbus };
+  });
 }
 
 export default function ScenarioTab({ account, sheetUrl }: Props) {
@@ -91,6 +165,30 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
   const [loading, setLoading] = useState(false);
   const [expandedBaseline, setExpandedBaseline] = useState(true);
   const [expandedUC, setExpandedUC] = useState<string | null>(null);
+
+  // SKU price data
+  const [skuPriceData, setSkuPriceData] = useState<any>(null);
+
+  // Build a lookup: friendly_name -> { cloud -> price }
+  const skuPriceMap: Record<string, Record<string, number>> = React.useMemo(() => {
+    if (!skuPriceData?.friendly_skus) return {};
+    const map: Record<string, Record<string, number>> = {};
+    for (const item of skuPriceData.friendly_skus) {
+      map[item.friendly_name] = item.clouds;
+    }
+    return map;
+  }, [skuPriceData]);
+
+  const availableClouds: string[] = skuPriceData?.clouds || ['azure', 'aws', 'gcp'];
+  const availableSkuNames: string[] = React.useMemo(() => {
+    if (!skuPriceData?.friendly_skus) return [];
+    return skuPriceData.friendly_skus.map((s: any) => s.friendly_name);
+  }, [skuPriceData]);
+
+  // Load SKU prices on mount / account change
+  useEffect(() => {
+    fetchSkuPrices(account).then(setSkuPriceData).catch(console.error);
+  }, [account]);
 
   const loadScenario = async () => {
     setLoading(true);
@@ -108,6 +206,14 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
         liveMonth: uc.liveMonth || uc.live_month || 6,
         rampType: (uc.rampType || uc.ramp_type || 'linear') as RampType,
         scenarios: uc.scenarios || [true, false, false],
+        cloud: uc.cloud || 'azure',
+        assumptions: uc.assumptions || '',
+        skuBreakdown: (uc.skuBreakdown || uc.sku_breakdown || []).map((s: any) => ({
+          sku: s.sku || '',
+          percentage: s.percentage || 0,
+          dbus: s.dbus || 0,
+          dollarDbu: s.dollarDbu || s.dollar_dbu || 0,
+        })),
       }));
       setNewUseCases(savedUCs);
 
@@ -181,13 +287,69 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
       liveMonth: 8,
       rampType: 'linear',
       scenarios: [scenario === 1, scenario === 2, scenario === 3],
+      cloud: availableClouds[0] || 'azure',
+      assumptions: '',
+      skuBreakdown: [],
     }]);
   };
 
   const removeNewUseCase = (id: string) => setNewUseCases(newUseCases.filter(uc => uc.id !== id));
 
   const updateUC = (id: string, updates: Partial<NewUseCase>) => {
-    setNewUseCases(prev => prev.map(uc => uc.id === id ? { ...uc, ...updates } : uc));
+    setNewUseCases(prev => prev.map(uc => {
+      if (uc.id !== id) return uc;
+      const updated = { ...uc, ...updates };
+      // Recalc SKU breakdown when steadyStateDbu, cloud, or skuBreakdown percentages change
+      if ('steadyStateDbu' in updates || 'cloud' in updates || 'skuBreakdown' in updates) {
+        updated.skuBreakdown = recalcSkuBreakdown(
+          updated.skuBreakdown,
+          updated.steadyStateDbu,
+          updated.cloud,
+          skuPriceMap
+        );
+      }
+      return updated;
+    }));
+  };
+
+  const applyWorkloadPreset = (ucId: string, presetKey: string) => {
+    const preset = WORKLOAD_PRESETS.find(p => p.key === presetKey);
+    if (!preset) return;
+    const uc = newUseCases.find(u => u.id === ucId);
+    if (!uc) return;
+
+    const breakdown: SKUAllocation[] = preset.skus.map(s => ({
+      sku: s.sku,
+      percentage: s.percentage,
+      dbus: 0,
+      dollarDbu: 0,
+    }));
+
+    updateUC(ucId, { skuBreakdown: breakdown });
+  };
+
+  const addSkuRow = (ucId: string) => {
+    const uc = newUseCases.find(u => u.id === ucId);
+    if (!uc) return;
+    const newRow: SKUAllocation = { sku: availableSkuNames[0] || 'Jobs Compute', percentage: 0, dbus: 0, dollarDbu: 0 };
+    updateUC(ucId, { skuBreakdown: [...uc.skuBreakdown, newRow] });
+  };
+
+  const removeSkuRow = (ucId: string, idx: number) => {
+    const uc = newUseCases.find(u => u.id === ucId);
+    if (!uc) return;
+    const updated = uc.skuBreakdown.filter((_, i) => i !== idx);
+    updateUC(ucId, { skuBreakdown: updated });
+  };
+
+  const updateSkuRow = (ucId: string, idx: number, field: 'sku' | 'percentage', value: string | number) => {
+    const uc = newUseCases.find(u => u.id === ucId);
+    if (!uc) return;
+    const updated = uc.skuBreakdown.map((row, i) => {
+      if (i !== idx) return row;
+      return { ...row, [field]: value };
+    });
+    updateUC(ucId, { skuBreakdown: updated });
   };
 
   // Filter use cases for current scenario
@@ -227,8 +389,6 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
   }, [domainBaselines, baselineGrowthRate, activeUseCases]);
 
   const totalBaseline = domainBaselines.reduce((s, b) => s + b.t12m, 0);
-
-  const monthLabels = Array.from({ length: 36 }, (_, i) => `M${i + 1}`);
 
   return (
     <div className="space-y-6">
@@ -329,7 +489,7 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                     className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-right" />
                   <span className="text-sm text-gray-500">% MoM</span>
                   <span className="text-xs text-gray-400">
-                    ≈ {((Math.pow(1 + baselineGrowthRate / 100 / 12, 12) - 1) * 100).toFixed(1)}% annual
+                    = {((Math.pow(1 + baselineGrowthRate / 100 / 12, 12) - 1) * 100).toFixed(1)}% annual
                   </span>
                 </div>
               </div>
@@ -377,6 +537,7 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-gray-900">{uc.name || 'Unnamed Use Case'}</span>
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{uc.domain}</span>
+                            {uc.cloud && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{uc.cloud}</span>}
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                               uc.rampType === 'hockey_stick' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
                             }`}>{uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'} ramp</span>
@@ -385,8 +546,9 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                             ))}
                           </div>
                           <div className="text-xs text-gray-400 mt-0.5">
-                            {formatCurrency(uc.steadyStateDbu)}/mo steady state | Onboard M{uc.onboardingMonth} → Live M{uc.liveMonth} |
+                            {formatCurrency(uc.steadyStateDbu)}/mo steady state | Onboard M{uc.onboardingMonth} {'>'} Live M{uc.liveMonth} |
                             Y1: {formatCurrency(ucYearTotals[0])} | Y2: {formatCurrency(ucYearTotals[1])} | Y3: {formatCurrency(ucYearTotals[2])}
+                            {uc.skuBreakdown.length > 0 && ` | ${uc.skuBreakdown.length} SKUs`}
                           </div>
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); removeNewUseCase(uc.id); }}
@@ -458,7 +620,7 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                                   </div>
                                 ) : (
                                   <div className="text-xs text-gray-500">
-                                    {formatCurrency(uc.steadyStateDbu)}/month → {fmtShort(uc.steadyStateDbu * 12)}/year
+                                    {formatCurrency(uc.steadyStateDbu)}/month {'>'} {fmtShort(uc.steadyStateDbu * 12)}/year
                                     <span className="text-gray-400 ml-2">
                                       ({TSHIRT_SIZES.find(s => s.value === uc.steadyStateDbu)?.desc})
                                     </span>
@@ -524,6 +686,145 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                             </div>
                           </div>
 
+                          {/* Cloud Selector */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Cloud</label>
+                            <div className="flex gap-2">
+                              {availableClouds.map(c => (
+                                <button key={c} onClick={() => updateUC(uc.id, { cloud: c })}
+                                  className={`px-3 py-1.5 text-xs rounded border capitalize ${
+                                    uc.cloud === c
+                                      ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-medium ring-1 ring-indigo-200'
+                                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                                  }`}>
+                                  {c.toUpperCase()}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Workload Type Presets */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Workload Type</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {WORKLOAD_PRESETS.map(preset => (
+                                <button key={preset.key}
+                                  onClick={() => applyWorkloadPreset(uc.id, preset.key)}
+                                  className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* SKU Breakdown Table */}
+                          {uc.skuBreakdown.length > 0 && (
+                            <div className="border rounded-lg overflow-hidden">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-gray-50">
+                                    <th className="px-3 py-2 text-left font-medium text-gray-600">SKU</th>
+                                    <th className="px-3 py-2 text-right font-medium text-gray-600 w-20">% Split</th>
+                                    <th className="px-3 py-2 text-right font-medium text-gray-600">DBUs/month</th>
+                                    <th className="px-3 py-2 text-right font-medium text-gray-600">$/DBU (list)</th>
+                                    <th className="px-3 py-2 text-right font-medium text-gray-600">$/month</th>
+                                    <th className="px-3 py-2 w-8"></th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {uc.skuBreakdown.map((alloc, idx) => {
+                                    const price = skuPriceMap[alloc.sku]?.[uc.cloud] || 0;
+                                    return (
+                                      <tr key={idx} className="border-t hover:bg-gray-50">
+                                        <td className="px-3 py-1.5">
+                                          <select value={alloc.sku}
+                                            onChange={(e) => updateSkuRow(uc.id, idx, 'sku', e.target.value)}
+                                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs">
+                                            {availableSkuNames.length > 0
+                                              ? availableSkuNames.map(name => (
+                                                  <option key={name} value={name}>{name}</option>
+                                                ))
+                                              : /* Fallback: show common SKU names when price data not loaded */
+                                                ['All Purpose Compute', 'All Purpose Compute (Photon)', 'Jobs Compute',
+                                                 'Jobs Compute (Photon)', 'Serverless Jobs', 'SQL Warehouse',
+                                                 'Serverless SQL', 'DLT Core', 'DLT Core (Photon)', 'DLT Advanced',
+                                                 'DLT Advanced (Photon)', 'DLT Pro', 'Model Serving',
+                                                 'Serverless Inference', 'Foundation Model API', 'Vector Search',
+                                                ].map(name => (
+                                                  <option key={name} value={name}>{name}</option>
+                                                ))
+                                            }
+                                          </select>
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right">
+                                          <div className="flex items-center justify-end gap-1">
+                                            <input type="number" min={0} max={100} value={alloc.percentage}
+                                              onChange={(e) => updateSkuRow(uc.id, idx, 'percentage', parseFloat(e.target.value) || 0)}
+                                              className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-right" />
+                                            <span className="text-gray-400">%</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right text-gray-700">
+                                          {alloc.dbus > 0 ? Math.round(alloc.dbus).toLocaleString() : '-'}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right text-gray-500">
+                                          {price > 0 ? `$${price.toFixed(2)}` : '-'}
+                                        </td>
+                                        <td className="px-3 py-1.5 text-right font-medium text-gray-900">
+                                          {alloc.dollarDbu > 0 ? formatCurrency(alloc.dollarDbu) : '-'}
+                                        </td>
+                                        <td className="px-1 py-1.5 text-center">
+                                          <button onClick={() => removeSkuRow(uc.id, idx)}
+                                            className="text-red-300 hover:text-red-500 text-[10px]">x</button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                  {/* Total row */}
+                                  <tr className="border-t-2 border-gray-300 bg-gray-50 font-medium">
+                                    <td className="px-3 py-2 text-gray-700">Total</td>
+                                    <td className="px-3 py-2 text-right">
+                                      <span className={uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0) === 100
+                                        ? 'text-green-600' : 'text-red-500'}>
+                                        {uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0)}%
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-gray-700">
+                                      {Math.round(uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)).toLocaleString()}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-gray-500">
+                                      {(() => {
+                                        const totalDollar = uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
+                                        const totalDbus = uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
+                                        const avg = totalDbus > 0 ? totalDollar / totalDbus : 0;
+                                        return avg > 0 ? `avg $${avg.toFixed(2)}` : '-';
+                                      })()}
+                                    </td>
+                                    <td className="px-3 py-2 text-right font-bold text-gray-900">
+                                      {formatCurrency(uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0))}
+                                    </td>
+                                    <td></td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+
+                          <button onClick={() => addSkuRow(uc.id)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                            + Add SKU Row
+                          </button>
+
+                          {/* Per-use-case Assumptions */}
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Use Case Assumptions</label>
+                            <textarea value={uc.assumptions || ''}
+                              onChange={(e) => updateUC(uc.id, { assumptions: e.target.value })}
+                              rows={2}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                              placeholder="e.g., Migrating 50 Informatica jobs, expected 10TB daily ingestion..." />
+                          </div>
+
                           {/* Ramp Preview */}
                           <div className="bg-gray-50 rounded-lg p-3">
                             <div className="text-[10px] font-medium text-gray-500 uppercase mb-2">Monthly Ramp Preview</div>
@@ -545,7 +846,7 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                                     />
                                     {(isOnboard || isLive || (i + 1) % 6 === 1) && (
                                       <span className={`text-[7px] mt-0.5 ${isOnboard || isLive ? 'font-bold text-gray-700' : 'text-gray-400'}`}>
-                                        {isOnboard ? '▲' : isLive ? '●' : `M${i + 1}`}
+                                        {isOnboard ? '^' : isLive ? 'o' : `M${i + 1}`}
                                       </span>
                                     )}
                                   </div>
@@ -553,8 +854,8 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                               })}
                             </div>
                             <div className="flex justify-between text-[9px] text-gray-400 mt-1">
-                              <span>▲ Onboard (M{uc.onboardingMonth})</span>
-                              <span>● Live (M{uc.liveMonth}): {formatCurrency(uc.steadyStateDbu)}/mo</span>
+                              <span>^ Onboard (M{uc.onboardingMonth})</span>
+                              <span>o Live (M{uc.liveMonth}): {formatCurrency(uc.steadyStateDbu)}/mo</span>
                             </div>
                           </div>
                         </div>
@@ -569,7 +870,7 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
           {/* Projection Summary */}
           <div className="bg-white rounded-lg shadow overflow-auto">
             <div className="px-4 py-3 bg-gray-50 border-b">
-              <h3 className="text-sm font-semibold text-gray-700">Scenario {scenario} — 3-Year Projection</h3>
+              <h3 className="text-sm font-semibold text-gray-700">Scenario {scenario} -- 3-Year Projection</h3>
             </div>
             <table className="w-full text-xs">
               <thead>
@@ -595,7 +896,7 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
                   ucM.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
                   return (
                     <tr key={uc.id} className="border-t hover:bg-gray-50">
-                      <td className="px-3 py-2 text-gray-700 sticky left-0 bg-white pl-6">↳ {uc.name || 'Unnamed'}</td>
+                      <td className="px-3 py-2 text-gray-700 sticky left-0 bg-white pl-6">{'>'} {uc.name || 'Unnamed'}</td>
                       <td className="px-3 py-2 text-right">{formatCurrency(yT[0])}</td>
                       <td className="px-3 py-2 text-right">{formatCurrency(yT[1])}</td>
                       <td className="px-3 py-2 text-right">{formatCurrency(yT[2])}</td>
