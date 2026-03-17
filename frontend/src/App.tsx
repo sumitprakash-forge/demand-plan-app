@@ -7,6 +7,11 @@ import OverviewTab from './components/OverviewTab';
 import { exportToXLS } from './export';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
 
+export interface AccountConfig {
+  name: string;
+  sheetUrl: string;
+}
+
 const TABS = [
   { id: 'summary', label: 'Demand Plan Summary' },
   { id: 'historical', label: 'Historical Consumption (T12M)' },
@@ -14,7 +19,10 @@ const TABS = [
   { id: 'overview', label: 'Account Overview' },
 ];
 
-const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1w4EhFgEvdNMhwEYpHYNpP0wHoG9MKILaP3YDBqHHQfM/edit';
+const DEFAULT_ACCOUNTS: AccountConfig[] = [
+  { name: 'Kroger', sheetUrl: '' },
+  { name: '84.51', sheetUrl: '' },
+];
 
 // Calculate use case monthly projection (same logic as ScenarioTab)
 function calcUseCaseMonthly(uc: any): number[] {
@@ -38,16 +46,31 @@ function calcUseCaseMonthly(uc: any): number[] {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('summary');
-  const [account, setAccount] = useState('Walmart');
-  const [sheetUrl, setSheetUrl] = useState(DEFAULT_SHEET_URL);
+  const [accounts, setAccounts] = useState<AccountConfig[]>(DEFAULT_ACCOUNTS);
   const [exporting, setExporting] = useState(false);
-  const [exportScenario, setExportScenario] = useState(1);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const updateAccount = (index: number, field: keyof AccountConfig, value: string) => {
+    setAccounts(prev => prev.map((a, i) => i === index ? { ...a, [field]: value } : a));
+  };
+
+  const addAccount = () => {
+    setAccounts(prev => [...prev, { name: '', sheetUrl: '' }]);
+  };
+
+  const removeAccount = (index: number) => {
+    if (accounts.length <= 1) return;
+    setAccounts(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleExportXLS = useCallback(async (scenarioNum: number) => {
     setExporting(true);
     setShowExportMenu(false);
     try {
+      // Export using the first account for historical data (summary sheet shows all)
+      const account = accounts[0]?.name || 'Unknown';
+      const sheetUrl = accounts[0]?.sheetUrl || '';
+
       // Fetch all data
       const [consumptionRes, mappingRes, scenarioRes] = await Promise.all([
         fetchConsumption(account),
@@ -113,6 +136,7 @@ export default function App() {
       }
 
       const filename = await exportToXLS({
+        accounts,
         account,
         scenario: scenarioNum,
         historicalData,
@@ -133,27 +157,57 @@ export default function App() {
     } finally {
       setExporting(false);
     }
-  }, [account, sheetUrl]);
+  }, [accounts]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Demand Plan App</h1>
               <p className="text-sm text-gray-500 mt-1">Databricks Consumption Planning & Forecasting</p>
             </div>
-            <div className="flex items-center gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Account</label>
-                <input
-                  type="text"
-                  value={account}
-                  onChange={(e) => setAccount(e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 w-40"
-                />
+            <div className="flex items-start gap-4">
+              {/* Multi-Account Configuration */}
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Accounts</label>
+                {accounts.map((acct, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={acct.name}
+                      onChange={(e) => updateAccount(idx, 'name', e.target.value)}
+                      placeholder="Account name"
+                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 w-32"
+                    />
+                    <input
+                      type="text"
+                      value={acct.sheetUrl}
+                      onChange={(e) => updateAccount(idx, 'sheetUrl', e.target.value)}
+                      placeholder="Sheet URL (optional)"
+                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-64"
+                    />
+                    {accounts.length > 1 && (
+                      <button
+                        onClick={() => removeAccount(idx)}
+                        className="text-red-400 hover:text-red-600 text-sm px-1"
+                        title="Remove account"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={addAccount}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  + Add Account
+                </button>
               </div>
 
               {/* Export Button */}
@@ -234,10 +288,10 @@ export default function App() {
 
       {/* Tab Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'summary' && <SummaryTab account={account} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} />}
-        {activeTab === 'historical' && <HistoricalTab account={account} sheetUrl={sheetUrl} />}
-        {activeTab === 'scenario' && <ScenarioTab account={account} sheetUrl={sheetUrl} />}
-        {activeTab === 'overview' && <OverviewTab account={account} />}
+        {activeTab === 'summary' && <SummaryTab accounts={accounts} setAccounts={setAccounts} />}
+        {activeTab === 'historical' && <HistoricalTab accounts={accounts} />}
+        {activeTab === 'scenario' && <ScenarioTab accounts={accounts} />}
+        {activeTab === 'overview' && <OverviewTab accounts={accounts} />}
       </main>
     </div>
   );

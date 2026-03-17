@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMapping, fetchSkuPrices, formatCurrency } from '../api';
+import type { AccountConfig } from '../App';
 
 interface Props {
+  accounts: AccountConfig[];
+}
+
+interface InnerProps {
   account: string;
   sheetUrl: string;
 }
@@ -153,7 +158,7 @@ function recalcSkuBreakdown(
   });
 }
 
-export default function ScenarioTab({ account, sheetUrl }: Props) {
+function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
   const [scenario, setScenario] = useState(1);
   const [baselineGrowthRate, setBaselineGrowthRate] = useState(2); // % MoM
   const [assumptionsText, setAssumptionsText] = useState('');
@@ -915,6 +920,44 @@ export default function ScenarioTab({ account, sheetUrl }: Props) {
             </table>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+export default function ScenarioTab({ accounts }: Props) {
+  const [selectedAccountIdx, setSelectedAccountIdx] = useState(0);
+
+  const idx = Math.min(selectedAccountIdx, accounts.length - 1);
+  const selectedAccount = accounts[idx];
+
+  return (
+    <div className="space-y-4">
+      {/* Account sub-tabs */}
+      {accounts.length > 1 && (
+        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+          {accounts.map((acct, i) => (
+            <button
+              key={i}
+              onClick={() => setSelectedAccountIdx(i)}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                idx === i
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {acct.name || `Account ${i + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedAccount && (
+        <ScenarioAccountView
+          key={selectedAccount.name}
+          account={selectedAccount.name}
+          sheetUrl={selectedAccount.sheetUrl}
+        />
       )}
     </div>
   );

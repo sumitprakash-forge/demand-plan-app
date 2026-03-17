@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { fetchConsumption, fetchDomainMapping, uploadConsumptionCSV, formatCurrency, formatNumber } from '../api';
+import type { AccountConfig } from '../App';
 
 interface Props {
-  account: string;
-  sheetUrl: string;
+  accounts: AccountConfig[];
 }
 
 type ViewMode = 'sku' | 'domain' | 'domain-workspace' | 'cloud-domain-sku';
 
-export default function HistoricalTab({ account, sheetUrl }: Props) {
+function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUrl: string }) {
   const [data, setData] = useState<any[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [wsCloud, setWsCloud] = useState<Record<string, string>>({});
@@ -128,9 +128,7 @@ export default function HistoricalTab({ account, sheetUrl }: Props) {
   });
 
   // ── Cloud → Domain → SKU pivot ──
-  // Structure: cloud → domain → sku → month → $DBU
   const cloudDomainSkuMonthly: Record<string, Record<string, Record<string, Record<string, number>>>> = {};
-  // Also cloud → month totals and cloud → domain → month totals
   const cloudMonthly: Record<string, Record<string, number>> = {};
   const cloudDomainMonthly: Record<string, Record<string, Record<string, number>>> = {};
 
@@ -474,7 +472,7 @@ export default function HistoricalTab({ account, sheetUrl }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Historical Consumption — Trailing 12 Months</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Historical Consumption — {account}</h2>
         <div className="flex items-center gap-3">
           <button onClick={loadData} disabled={loading}
             className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
@@ -570,6 +568,45 @@ export default function HistoricalTab({ account, sheetUrl }: Props) {
         <div className="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
           <p>No consumption data loaded. Click "Refresh from Logfood" or upload a CSV file.</p>
         </div>
+      )}
+    </div>
+  );
+}
+
+export default function HistoricalTab({ accounts }: Props) {
+  const [selectedAccountIdx, setSelectedAccountIdx] = useState(0);
+
+  // Clamp index if accounts change
+  const idx = Math.min(selectedAccountIdx, accounts.length - 1);
+  const selectedAccount = accounts[idx];
+
+  return (
+    <div className="space-y-4">
+      {/* Account sub-tabs */}
+      {accounts.length > 1 && (
+        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+          {accounts.map((acct, i) => (
+            <button
+              key={i}
+              onClick={() => setSelectedAccountIdx(i)}
+              className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${
+                idx === i
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {acct.name || `Account ${i + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selectedAccount && (
+        <HistoricalAccountView
+          key={selectedAccount.name}
+          account={selectedAccount.name}
+          sheetUrl={selectedAccount.sheetUrl}
+        />
       )}
     </div>
   );

@@ -1,8 +1,10 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { formatCurrency, fetchSummaryAll } from './api';
+import type { AccountConfig } from './App';
 
 interface ExportOptions {
+  accounts: AccountConfig[];
   account: string;
   scenario: number;
   // Historical data
@@ -77,13 +79,21 @@ export async function exportToXLS(opts: ExportOptions) {
   const wb = XLSX.utils.book_new();
   const months = [...new Set(opts.historicalData.map(r => r.month))].sort();
 
-  // ── Sheet 1: Demand Plan Summary (all 3 scenarios) ──
-  let summaryAllData: any = null;
-  try {
-    summaryAllData = await fetchSummaryAll(opts.account);
-  } catch (e) {
-    // Fallback: not available
-  }
+  // ── Sheet 1: Demand Plan Summary (all 3 scenarios, all accounts) ──
+  // Fetch summary data for all accounts
+  const allAccountSummaries: Record<string, any> = {};
+  const accountNames = (opts.accounts || []).filter(a => a.name.trim()).map(a => a.name);
+  if (accountNames.length === 0) accountNames.push(opts.account);
+
+  await Promise.all(
+    accountNames.map(async (name) => {
+      try {
+        allAccountSummaries[name] = await fetchSummaryAll(name);
+      } catch (e) {
+        // Skip accounts that fail
+      }
+    })
+  );
 
   const summaryRows: any[][] = [];
   // Row 1-2: Header
@@ -92,54 +102,64 @@ export async function exportToXLS(opts: ExportOptions) {
   summaryRows.push(['']); // blank
   summaryRows.push(['']); // blank
 
-  const scenarios = summaryAllData?.scenarios || [];
   for (let si = 0; si < 3; si++) {
-    const scenarioData = scenarios[si];
     const scenarioNum = si + 1;
-    const description = scenarioData?.description || `Scenario ${scenarioNum}`;
-
-    // Find rows from the scenario data
-    const grandTotal = scenarioData?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
-    const baselineRow = scenarioData?.summary_rows?.find(
-      (r: any) => !r.is_use_case && r.use_case_area !== 'Grand Total' && r.use_case_area !== 'New Use Cases'
-    );
-    const useCaseRows = scenarioData?.summary_rows?.filter((r: any) => r.is_use_case) || [];
-
-    const y1 = grandTotal?.year1 || 0;
-    const y2 = grandTotal?.year2 || 0;
-    const y3 = grandTotal?.year3 || 0;
-    const total = grandTotal?.total || 0;
+    // Use first account's scenario description
+    const firstAccountData = allAccountSummaries[accountNames[0]];
+    const description = firstAccountData?.scenarios?.[si]?.description || `Scenario ${scenarioNum}`;
 
     // Scenario header
     summaryRows.push(['', `Scenario ${scenarioNum} (${description})`]);
     summaryRows.push(['']); // blank
 
-    // SUMMARY section
+    // SUMMARY section — per-account rows + grand total
     summaryRows.push(['', 'SUMMARY']);
     summaryRows.push(['', 'Total $DBUs (DBCU at List)', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
-    summaryRows.push(['', opts.account, y1, y2, y3, total]);
-    summaryRows.push(['', 'Grand Total', y1, y2, y3, total]);
+
+    let crossY1 = 0, crossY2 = 0, crossY3 = 0, crossTotal = 0;
+    accountNames.forEach((acctName) => {
+      const acctData = allAccountSummaries[acctName];
+      const gt = acctData?.scenarios?.[si]?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
+      const y1 = gt?.year1 || 0;
+      const y2 = gt?.year2 || 0;
+      const y3 = gt?.year3 || 0;
+      const total = gt?.total || 0;
+      summaryRows.push(['', acctName, y1, y2, y3, total]);
+      crossY1 += y1; crossY2 += y2; crossY3 += y3; crossTotal += total;
+    });
+    summaryRows.push(['', 'Grand Total', crossY1, crossY2, crossY3, crossTotal]);
     summaryRows.push(['']); // blank
     summaryRows.push(['']); // blank
 
-    // Detail section
-    summaryRows.push(['', '$DBUs List', 'Year 1', 'Year 2', 'Year 3', 'Total']);
-    summaryRows.push(['', `Use Case Areas (${opts.account.toUpperCase()})`]);
+    // Detail section — per account
+    accountNames.forEach((acctName) => {
+      const acctData = allAccountSummaries[acctName];
+      const scenarioData = acctData?.scenarios?.[si];
+      const grandTotal = scenarioData?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
+      const baselineRow = scenarioData?.summary_rows?.find(
+        (r: any) => !r.is_use_case && r.use_case_area !== 'Grand Total' && r.use_case_area !== 'New Use Cases'
+      );
+      const useCaseRows = scenarioData?.summary_rows?.filter((r: any) => r.is_use_case) || [];
 
-    // Existing - Live Use Cases (baseline)
-    if (baselineRow) {
-      summaryRows.push(['', 'Existing - Live Use Cases', baselineRow.year1, baselineRow.year2, baselineRow.year3, baselineRow.total]);
-    }
+      summaryRows.push(['', `$DBUs List (${acctName.toUpperCase()})`, 'Year 1', 'Year 2', 'Year 3', 'Total']);
 
-    // Each active use case
-    useCaseRows.forEach((row: any) => {
-      const name = (row.use_case_area || '').replace(/^\s*↳\s*/, '').trim();
-      summaryRows.push(['', name, row.year1, row.year2, row.year3, row.total]);
+      if (baselineRow) {
+        summaryRows.push(['', 'Existing - Live Use Cases', baselineRow.year1, baselineRow.year2, baselineRow.year3, baselineRow.total]);
+      }
+
+      useCaseRows.forEach((row: any) => {
+        const name = (row.use_case_area || '').replace(/^\s*↳\s*/, '').trim();
+        summaryRows.push(['', name, row.year1, row.year2, row.year3, row.total]);
+      });
+
+      const y1 = grandTotal?.year1 || 0;
+      const y2 = grandTotal?.year2 || 0;
+      const y3 = grandTotal?.year3 || 0;
+      const total = grandTotal?.total || 0;
+      summaryRows.push(['', `Total (${acctName})`, y1, y2, y3, total]);
+      summaryRows.push(['']); // blank
     });
 
-    // Total row
-    summaryRows.push(['', 'Total $DBUs (DBCU at List)', y1, y2, y3, total]);
-    summaryRows.push(['']); // blank
     summaryRows.push(['']); // blank
   }
 
