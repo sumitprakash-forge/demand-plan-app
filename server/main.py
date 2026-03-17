@@ -212,8 +212,18 @@ def _calc_use_case_monthly(uc: dict) -> list[float]:
 @app.get("/api/summary")
 async def get_summary(account: str = Query(default="Walmart"), scenario: int = Query(default=1)):
     """Return demand plan summary — pulls projections from saved scenario config."""
-    # Get consumption data for baseline
-    consumption = _consumption_cache.get(account) or _load_json(f"consumption_{account}") or []
+    # Get consumption data for baseline — fetch from Logfood if not cached
+    consumption = _consumption_cache.get(account)
+    if not consumption:
+        consumption = _load_json(f"consumption_{account}")
+    if not consumption:
+        try:
+            consumption = query_consumption(account)
+            _consumption_cache[account] = consumption
+            _save_json(f"consumption_{account}", consumption)
+        except Exception as e:
+            print(f"[summary] WARNING: could not fetch consumption for {account}: {e}")
+            consumption = []
 
     # Get domain mapping
     mapping_list = None
