@@ -158,6 +158,35 @@ Build and edit use cases across 3 scenarios:
 - Changes auto-save and immediately update the Summary tab
 - Use case projections ramp from onboarding month to live month then hold at steady state across 36 months
 
+#### Adding a Use Case — Step by Step
+
+**Step 1:** Click **+ Add Use Case** to create a new use case row, then click on it to expand the edit form.
+
+**Step 2:** Fill in the use case details:
+
+![Use Case Form](docs/screenshots/04a_scenario_usecase_form.png)
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| **Use Case Name** | Descriptive label | `Lakehouse Migration — Supply Chain Analytics` |
+| **Domain** | Business domain from mapping sheet | `Supply Chain` |
+| **Steady-State Size** | Monthly $DBU at full ramp (XS→XXXL or Custom) | `L — $35K/mo` |
+| **Ramp Pattern** | Linear or Hockey Stick | `Linear` |
+| **Onboarding Month** | Month the workload begins onboarding | `Month 1 (Y1)` |
+| **Live Month** | Month it reaches full steady state | `Month 9 (Y1)` |
+| **Include in Scenarios** | Which scenarios include this UC | `S1`, `S2`, `S3` |
+| **Cloud** | AWS / Azure / GCP | `GCP` |
+| **Workload Type** | ETL Pipeline, BI/Analytics, ML Platform, Agentic AI, Migration, Custom | `ETL Pipeline` |
+| **Assumptions** | Free-text notes for the use case | `Migrating 200 Informatica jobs...` |
+
+**Step 3:** Click **Save Scenario** — the projection table updates immediately.
+
+![Scenario Saved](docs/screenshots/04b_scenario_saved.png)
+
+**Step 4:** Switch to **Demand Plan Summary** to see the use case reflected in all three scenarios.
+
+![Summary After Use Case](docs/screenshots/04c_summary_after_usecase.png)
+
 ---
 
 ### Tab 4 — Account Overview
