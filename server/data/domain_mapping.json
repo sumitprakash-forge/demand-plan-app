@@ -1,0 +1,2830 @@
+[
+  {
+    "workspace": "workspace",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "aws",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "clubopsinv-daadbd0a-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dataphinaz-fec80718-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-cloud2-platform-eastus",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-data-engg-gov",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-delta",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-ds-ibg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-supplychain-cdp",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "fcpnonprod-5907829f-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-benefits-cash-rewards",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cdp-community-ws",
+    "domain": "sams cdp",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-general",
+    "domain": "RIS Analytics",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-platform-eastus",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-platform-westus",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-data-engg-gov",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-experience-protection",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-mdp-cdp-ws",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-oms-cdp",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-product-ops-analytics",
+    "domain": "Product Ops",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sams-memb-mktng-analytics",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-site-analytics-westus",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-supplychain-data",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stage-sadmecom",
+    "domain": "Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-cloud2-platform-eastus",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-supplychain-data",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "databricks_hr",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "aws",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "GDO-Health-and-Wellnesssouthcentralus_db-104",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "Prod-mdm-dbs",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "SamsSearch",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "databrks_test_alex",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "db_mexicodatascien_prod_1pd",
+    "domain": "Walmart Mexico",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart International"
+  },
+  {
+    "workspace": "dev-ASA-ws-usc1",
+    "domain": "Assortment & Space",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-CIP-ws-usc1",
+    "domain": "People Data Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-GPA-ws-usc1",
+    "domain": "Product",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-HW-ws-usc1",
+    "domain": "Health & Wellness",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-Wplus-ws-usc1",
+    "domain": "Product",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-adtech-ws-use4",
+    "domain": "Walmart Adtech",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-benefits-hub",
+    "domain": "Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-cloud2-platform-westus",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-datatrace-usc1",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-dms-data-quality-use4",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-merch-madrid",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-merch-platform-epbcs",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-pricing-common",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sadmecom",
+    "domain": "Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-cdp-platform",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-data-labelling",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-samscash-xray",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-samsinfra-data-analysis",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-cdp-training",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-data-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-isee-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-myclb-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-oyi-ds",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-sng-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mbr-loyalty-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mbr-mkt-analytics",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mbrshp-prszn-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-member-data-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-analytics",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-cost-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-fa-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-ibg-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-pd-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mktg-data-engg",
+    "domain": "Sam's Marketing DE",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mktg-martech-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mrch-pricing-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-analytics",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-casa-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-ds-conduit",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-ims-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-nexus-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-spot-engg",
+    "domain": "SPOT",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-steel-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-vision-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-txns-data-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-samsdse-maestro",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-wmt-asa-usc1",
+    "domain": "Assortment & Space",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-wmt-dataventure-use4",
+    "domain": "Walmart Data Venture",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart Data Venture"
+  },
+  {
+    "workspace": "fcpdatabri-65250d70-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "fcpdatabri-b3b82938-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "fpaibgdwhp-444ee243-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "glpostit-e3b157c8-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "glpostit-e73719eb-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "i0m04c8-sandbox-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "i2sentry-3f95b1f3-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "i2sentryeu-58dfa091-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "i2sentrywe-74b8c87a-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "i2sentrywe-f4105050-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "infosec-sandbox-workspace",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "intl-wus-ops-bricks",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "intlsamsoy-3487e4af-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "intlsamsoy-91f45079-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "laasdatami-450aa3dd-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "mdbort-2fc544c4-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "mxsamsmemb-5bc661b8-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "nonprod-MX-ws-usc1",
+    "domain": "Walmart Mexico",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart International"
+  },
+  {
+    "workspace": "oly-nextsouthcentralus_db-36m",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "oyi-prod",
+    "domain": "InClub Ops",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-assocexp-myclub-dbricks",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-benefits-hub",
+    "domain": "Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cdp-sams-sc-strategy",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-finance",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-inventory",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-recys",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cloud2-secure",
+    "domain": "CDP Platform, Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cluboperations-tbc",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-clubops-inv-intel",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-data-engg-sentinel",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-fresh-pi-autocorrect",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-fresh-salestool-databrick",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-inclub-cpu",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-marketing-sams-ws",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-membership-secure-ws",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-merch-analytics-data-extract",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-merch-fusion-macrospace",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-merch-platform-epbcs",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-merch-platform-madrid",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-merchant-data-catalog",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-merchplanassort-common",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-pricing",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-pricing-wingman",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-qs-migration",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-remarketer-omnichannel",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-rewards-bop",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sadmecom-secure",
+    "domain": "Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-safe",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sams-cv-iras",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sams-pricing-wingman",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sams-replenishment",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sams-rewards",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sams-search",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-samscash-xray",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-sim-dataacquisition",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-cdp-platform",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-cdp-pltfrm-genie",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-dbi-analytics",
+    "domain": "Data & Analytics",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-df-data-engg",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-ecomm-analytics",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-ecomm-search-ds",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-ecomm-titan-engg",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-governance-engg",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-ic-exit-tech-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-ic-inv-intel-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-clb-ops-ds",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-data-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-fresh-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-iras-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-isee-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-myclb-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-oyi-ds",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-oyi-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-mbr-loyalty-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mbr-mkt-analytics",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-member-cred-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-member-data-engg",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-member-moc-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-merch-analytics",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-merch-cost-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-fa-data-eng",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-ibg-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-itm-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-pd-data-eng",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mktg-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mktg-martech-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mrch-pandora-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mrch-price-opt-ds",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-mrch-pricing-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mrch-rmkt-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-privacy-data-engg",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-prodops-analytics",
+    "domain": "Product Ops",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-analytics",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-casa-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-ds-conduit",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-ims-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-nexus-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-oms-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-rhq-data-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-ris-analytics",
+    "domain": "RIS Analytics",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-spot-engg",
+    "domain": "SPOT",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-sse-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-ssh-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-steel-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-sc-vision-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-txns-data-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-wmt-dataventure-usc1",
+    "domain": "Walmart Data Venture",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart Data Venture"
+  },
+  {
+    "workspace": "prod-wmt-mx-dap-usc1",
+    "domain": "Walmart Mexico",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart International"
+  },
+  {
+    "workspace": "samspaymen-4c30fcc2-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "samspaymen-9db89a7e-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "sbx-merchplanassort-common",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-cloud2-platform-westus",
+    "domain": "sams platform general",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-clubiq-workspace",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-clubops-inv-intel",
+    "domain": "InClub Ops",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-data-engg-gov",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-iras-oyi",
+    "domain": "InClub Ops",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-merch-platform-madrid",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-rewards-bop",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-sim-dataacquisition",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-cdp-platform",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-df-data-engg",
+    "domain": "Data Quality",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-fastr-cdp",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-ic-exit-tech-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-ic-inv-intel-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "stg-us-sams-inclub-data-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-inclub-fresh-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-inclub-myclb-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mbr-loyalty-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mbr-mkt-analytics",
+    "domain": "Data & Business Insights",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-member-cred-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-member-data-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-merch-cost-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-merch-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-merch-fa-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-merch-ibg-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-merch-itm-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-merch-pd-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mktg-data-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mrch-pandora-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "Data Privacy",
+    "domain": "Sam's Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-analytics",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-casa-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-ds-conduit",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-nexus-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-rhq-data-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-spot-engg",
+    "domain": "SPOT",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-ssh-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "stg-us-sams-sc-vision-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-txns-data-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "bfd-databr-dr-dev-small1",
+    "domain": "Walmart Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-us-sams-merch-itm-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mrch-mmc-cv-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mrch-pandora-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-oms-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dmsdbunity-63a7b73f-ws",
+    "domain": "Walmart Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "fcpdatabri-aaf8fecc-ws",
+    "domain": "Walmart Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "glpostit-207e7490-ws",
+    "domain": "Walmart Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "i2sentry-a5f7b247-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prj-bowtie-west2",
+    "domain": "BowTie",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-ecomm-sng-engg",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-recv-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-md-opt-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "samscrmmar-ccf5a4f0-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "stg-us-sams-inclub-recv-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-oms-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "udpdelta-prod-medium5",
+    "domain": "Walmart Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-delta-dr",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-merch-analytics-extract",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-merch-platform-jda-planograms",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-merchplatform-jdaoptima",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-rewards-tracker",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-ai-labs",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-cv-frontend-cv",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-cv-iras",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-sams-datagovernance",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "sams-club",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-cloud2-mywork",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-clubiq-cloud2-mywork",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-clubops-exitapp",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-merch-platform-epbcs",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-remarketer-omnichannel",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-sams-smart-alerts-databric",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "udp-batch-dev-small2",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "wmt-bfdms-db-prod-andromeda",
+    "domain": "People Data Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "oyimanaged-d0277959-ws",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "concord-workspace",
+    "domain": "Walmart Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-sc-ims-engg-dr",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-us-sams-ecomm-search-ds",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-ecomm-titan-engg",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-clb-ops-ds",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-iras-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-membr-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-inclub-recv-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-member-cred-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-fil-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-merch-md-opt-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mrch-price-opt-ds",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-mrch-rmkt-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-us-sams-sc-omni-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-club-mbrship-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-cpu-ds",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-membr-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "sams-clubops-oyi-stg",
+    "domain": "InClub Ops",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "sams-merch-analytics-prod",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-ecomm-titan-engg",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-inclub-iras-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-inclub-membr-engg",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-member-moc-engg",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "stg-us-sams-merch-md-opt-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mrch-price-opt-ds",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mrch-rmkt-engg",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-omni-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-sc-sse-engg",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "wmt-bfdms-db-dev-andromeda",
+    "domain": "People Data Platform",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "Titan",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-assocexp-myclub-databricks",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-oms-cdp",
+    "domain": "Supply Chain",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prj-bowtie-west",
+    "domain": "BowTie",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prj-bowtie-westus2",
+    "domain": "BowTie",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-bowtie-dbricks-01",
+    "domain": "BowTie",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "prod-cloud2-mywork",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-clubavailability-appollo",
+    "domain": "InClub Ops",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-cluboperations-receiving",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-exit-check",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-membership-credit",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-membership-credit-vnet",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-membership-data-wus",
+    "domain": "Sams Data Compliance & Finance",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-pec-preferencecenter",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "qa-mar-spark-test2",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "stg-clubops-tirebattery",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-mdp-cdp-ws",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-promo-platform",
+    "domain": "CDP Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-clubops-invapps-clic",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-ecom-us-databricks-secondary",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "qa-ecom-us-databricks-primary",
+    "domain": "Ecommerce",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-benefits-cash-rewards",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "target-inventory-workspace",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-club-wireless-eco",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-merch-datalake-item-tile",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-merch-platform-reusability",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "dev-promo-databricks-scus",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "dev-promo-platform",
+    "domain": "Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stage-membership-credit",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stage-membership-credit-eus",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stage-membership-credit-vnet",
+    "domain": "Membership",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-cluboperations-receiving",
+    "domain": "InClub Operations",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-merchandising-rro",
+    "domain": "Merchandising",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "stg-promo-platform-wus",
+    "domain": "Platform",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "oyi-stg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "Walmart"
+  },
+  {
+    "workspace": "databricks-inscape",
+    "domain": "Inscape",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "vizio-datalake",
+    "domain": "Datalake",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "MLDA Prod",
+    "domain": "MLDA",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "vizio-ati-breck",
+    "domain": "Datalake",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "inscape-databricks-dev",
+    "domain": "Inscape",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "vizio-os-dallas-prod-databricks",
+    "domain": "OS",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "MLDA Stage",
+    "domain": "MLDA",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "vizio-data-products",
+    "domain": "Datalake",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "vizio-datalake-ai-sandbox",
+    "domain": "Datalake",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "MLDA Dev",
+    "domain": "MLDA",
+    "account_name": "Vizio",
+    "cloudtype": "aws",
+    "org": "vizio"
+  },
+  {
+    "workspace": "databrick-neo-poc",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "demodatabricks",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-credit-databricks",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-marketing-sams-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-mdp-cdp-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-membership-credit",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-sams-merch-markdown-optimization",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "freshagent-2922ec75-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "freshagent-bbaa2123-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "freshagent-d68750d3-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "freshwaste-9bd2c6af-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "hvidev-dbws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "hviprod-dbws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "nextgenoms-a5d3e737-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "nonprod-inclub-cpu",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "paastest-6d095064-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "prod-cloud2-cv",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "prod-cloud2-mywork-premium",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "prod-cloud2-shrink",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "prod-fresh-salestool",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "prod-MyWork-EDA",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "prod-triangle-sams",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "stg-triangle-sams",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "testcluste-36e8d6c2-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "testcluste-3fdcdc4c-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "azure",
+    "org": "others"
+  },
+  {
+    "workspace": "bfd-benchmarking-use4",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-luminate-poc-nw-use4",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-us-sams-cdp-demo-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-us-sams-deg-ecomm",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "paas-ws-perm-testing",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "prd-us-sams-merch-fa-data-engg",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "sams-clubops-oyi-dev",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "wmt-hnw-pharmacy-catalog-dev",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-sams-ims",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "dev-us-sams-cdp-demo-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "m0m0lps-test-ws",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "null",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "prd-us-sams-merch-fa-data-engg",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "sandbox-workspace",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "sandbox-workspace-dr",
+    "domain": "workspace_deleted",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "others"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-mrch-cmpintl-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "wmt-hnw-pharmacy-catalog-prod",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mrktg-analytics",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-cdp-analytics",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-merch-fil-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-member-analytics",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-inclub-analytics",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-fin-analytics",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "prod-us-sams-mrch-mmc-cv-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "stg-us-sams-privacy-data-engg",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  },
+  {
+    "workspace": "wmt-bfd-databricks-dev-lpw2",
+    "domain": "untagged",
+    "account_name": "Walmart",
+    "cloudtype": "gcp",
+    "org": "Sams Club"
+  }
+]
