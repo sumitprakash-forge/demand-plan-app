@@ -52,7 +52,7 @@ function loadSavedAccounts(): AccountConfig[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch { /* ignore */ }
-  return DEFAULT_ACCOUNTS;
+  return [{ name: '', sfdc_id: '', sheetUrl: '' }];
 }
 
 export default function App() {
@@ -60,6 +60,9 @@ export default function App() {
   const [accounts, setAccounts] = useState<AccountConfig[]>(loadSavedAccounts);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [loadingAccounts, setLoadingAccounts] = useState<Record<string, boolean>>({});
+  const [loadStatus, setLoadStatus] = useState<Record<string, 'ok' | 'error'>>({});
 
   // Persist accounts to localStorage whenever they change
   useEffect(() => {
@@ -81,6 +84,34 @@ export default function App() {
     if (accounts.length <= 1) return;
     setAccounts(prev => prev.filter((_, i) => i !== index));
   };
+
+  const handleLoadAccount = useCallback(async (acct: AccountConfig) => {
+    const key = acct.name;
+    setLoadingAccounts(prev => ({ ...prev, [key]: true }));
+    setLoadStatus(prev => { const n = { ...prev }; delete n[key]; return n; });
+    try {
+      await fetchConsumption(acct.sfdc_id, true);
+      if (acct.sheetUrl) await fetchDomainMapping(acct.sheetUrl);
+      setLoadStatus(prev => ({ ...prev, [key]: 'ok' }));
+      window.location.reload();
+    } catch {
+      setLoadStatus(prev => ({ ...prev, [key]: 'error' }));
+    } finally {
+      setLoadingAccounts(prev => ({ ...prev, [key]: false }));
+    }
+  }, []);
+
+  const handleClearAll = useCallback(async () => {
+    if (!window.confirm('Clear all cached data and reset accounts? This cannot be undone.')) return;
+    setClearing(true);
+    try {
+      await fetch('/api/clear-data', { method: 'DELETE' });
+    } catch { /* ignore network errors */ }
+    localStorage.removeItem('demandplan_accounts');
+    setAccounts([{ name: '', sfdc_id: '', sheetUrl: '' }]);
+    setClearing(false);
+    window.location.reload();
+  }, []);
 
   const handleExportXLS = useCallback(async (scenarioNum: number) => {
     setExporting(true);
@@ -217,6 +248,36 @@ export default function App() {
                       placeholder="Domain Mapping Sheet URL"
                       className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-56"
                     />
+                    <button
+                      onClick={() => handleLoadAccount(acct)}
+                      disabled={!acct.sfdc_id.trim() || loadingAccounts[acct.name]}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors
+                        ${loadStatus[acct.name] === 'ok' ? 'bg-green-50 text-green-700 border-green-300' :
+                          loadStatus[acct.name] === 'error' ? 'bg-red-50 text-red-600 border-red-300' :
+                          'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'}
+                        disabled:opacity-40`}
+                      title="Load data for this account"
+                    >
+                      {loadingAccounts[acct.name] ? (
+                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : loadStatus[acct.name] === 'ok' ? (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : loadStatus[acct.name] === 'error' ? (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                      )}
+                      {loadingAccounts[acct.name] ? 'Loading…' : loadStatus[acct.name] === 'ok' ? 'Loaded' : loadStatus[acct.name] === 'error' ? 'Failed' : 'Load'}
+                    </button>
                     {accounts.length > 1 && (
                       <button
                         onClick={() => removeAccount(idx)}
@@ -235,6 +296,28 @@ export default function App() {
                   className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                 >
                   + Add Account
+                </button>
+              </div>
+
+              {/* Clear All Data Button */}
+              <div className="mt-4">
+                <button
+                  onClick={handleClearAll}
+                  disabled={clearing}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-md text-sm font-medium hover:bg-red-100 disabled:opacity-50"
+                  title="Clear all cached data and reset accounts"
+                >
+                  {clearing ? (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  )}
+                  Clear All
                 </button>
               </div>
 

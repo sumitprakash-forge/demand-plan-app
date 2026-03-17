@@ -522,6 +522,24 @@ async def get_forecast(account: str = Query(default="Walmart")):
 # ---------------------------------------------------------------------------
 # Account Overview
 # ---------------------------------------------------------------------------
+# Clear All Data
+# ---------------------------------------------------------------------------
+
+@app.delete("/api/clear-data")
+async def clear_all_data():
+    """Delete all cached JSON files and clear in-memory caches."""
+    _domain_mapping_cache.clear()
+    _consumption_cache.clear()
+    _scenarios.clear()
+    _forecast_overrides.clear()
+    _sku_price_cache.clear()
+    deleted = []
+    for f in DATA_DIR.glob("*.json"):
+        f.unlink()
+        deleted.append(f.name)
+    return {"deleted": deleted, "count": len(deleted)}
+
+# ---------------------------------------------------------------------------
 
 @app.get("/api/account-overview")
 async def get_account_overview(account: str = Query(default="Walmart")):
