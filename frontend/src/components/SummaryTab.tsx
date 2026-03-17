@@ -11,6 +11,20 @@ const COLORS = [
   '#38BDF8', '#4ADE80', '#FB7185',
 ];
 
+// Distinct account colors — bold, easy to distinguish
+const ACCOUNT_COLORS = [
+  '#3B82F6', // blue
+  '#F97316', // orange
+  '#10B981', // emerald
+  '#A855F7', // purple
+  '#EF4444', // red
+  '#14B8A6', // teal
+  '#F59E0B', // amber
+  '#EC4899', // pink
+  '#6366F1', // indigo
+  '#84CC16', // lime
+];
+
 const SCENARIO_COLORS = ['#3B82F6', '#8B5CF6', '#10B981'];
 
 interface Props {
@@ -186,22 +200,29 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
   const firstAccountName = accounts[0]?.name || '';
   const firstData = accountDataMap[firstAccountName];
 
-  // Build comparison bar chart data from all 3 scenarios (aggregated across all accounts)
+  // activeAccounts must be defined before chart data that uses it
+  const activeAccounts = accounts.filter(a => a.name.trim() && accountDataMap[a.name]);
+
+  // Map each account name to its color index
+  const accountColorMap: Record<string, string> = {};
+  accounts.forEach((a, i) => {
+    accountColorMap[a.name] = ACCOUNT_COLORS[i % ACCOUNT_COLORS.length];
+  });
+
+  // Build comparison bar chart data — per-account bars per year
   const comparisonChartData = (() => {
     const hasAnyData = Object.keys(accountDataMap).length > 0;
     if (!hasAnyData) return [];
     return ['Year 1', 'Year 2', 'Year 3'].map((label, yi) => {
+      const yearKey = ['year1', 'year2', 'year3'][yi];
       const entry: any = { year: label };
-      for (let si = 0; si < 3; si++) {
-        let total = 0;
-        Object.values(accountDataMap).forEach((ad: any) => {
-          const scenarioData = ad?.scenarios?.[si];
+      activeAccounts.forEach((a) => {
+        for (let si = 0; si < 3; si++) {
+          const scenarioData = (accountDataMap[a.name] as any)?.scenarios?.[si];
           const grandTotal = scenarioData?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
-          const yearKey = ['year1', 'year2', 'year3'][yi];
-          total += grandTotal ? grandTotal[yearKey] : 0;
-        });
-        entry[`scenario${si + 1}`] = total;
-      }
+          entry[`${a.name}_s${si + 1}`] = grandTotal ? grandTotal[yearKey] : 0;
+        }
+      });
       return entry;
     });
   })();
@@ -225,8 +246,6 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
     const useCaseRows = scenarioData.summary_rows.filter((r: any) => r.is_use_case);
     return { baselineRow, useCaseRows };
   };
-
-  const activeAccounts = accounts.filter(a => a.name.trim() && accountDataMap[a.name]);
 
   return (
     <div className="space-y-6">
@@ -363,19 +382,53 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
               </ResponsiveContainer>
             </div>
 
-            {/* Yearly Trend - All 3 scenarios side by side */}
+            {/* Yearly Trend - Per-account bars, grouped by scenario */}
             <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Yearly $DBU Comparison — All Scenarios (All Accounts)</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={comparisonChartData}>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Yearly $DBU — By Account &amp; Scenario</h3>
+              {/* Account color legend */}
+              <div className="flex flex-wrap gap-3 mb-3">
+                {activeAccounts.map((a) => (
+                  <div key={a.name} className="flex items-center gap-1.5 text-xs font-medium">
+                    <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: accountColorMap[a.name] }} />
+                    {a.name}
+                  </div>
+                ))}
+              </div>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={comparisonChartData} barCategoryGap="20%" barGap={2}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="year" />
                   <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Legend />
-                  <Bar dataKey="scenario1" name="Scenario 1" fill={SCENARIO_COLORS[0]} />
-                  <Bar dataKey="scenario2" name="Scenario 2" fill={SCENARIO_COLORS[1]} />
-                  <Bar dataKey="scenario3" name="Scenario 3" fill={SCENARIO_COLORS[2]} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => {
+                      const parts = name.split('_s');
+                      const acct = parts[0];
+                      const s = parts[1];
+                      return [formatCurrency(v), `${acct} – Scenario ${s}`];
+                    }}
+                  />
+                  <Legend
+                    formatter={(value: string) => {
+                      const parts = value.split('_s');
+                      return `${parts[0]} S${parts[1]}`;
+                    }}
+                  />
+                  {activeAccounts.flatMap((a) =>
+                    [1, 2, 3].map((s) => {
+                      const baseColor = accountColorMap[a.name];
+                      // Lighten for S2, lighten more for S3 using opacity
+                      const opacity = s === 1 ? 1 : s === 2 ? 0.7 : 0.45;
+                      return (
+                        <Bar
+                          key={`${a.name}_s${s}`}
+                          dataKey={`${a.name}_s${s}`}
+                          name={`${a.name}_s${s}`}
+                          fill={baseColor}
+                          fillOpacity={opacity}
+                        />
+                      );
+                    })
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -441,7 +494,12 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                     <tbody>
                       {accountTotals.map((at) => (
                         <tr key={at.name} className="border-t">
-                          <td className="py-2 pr-4 text-sm font-medium text-gray-900">{at.name}</td>
+                          <td className="py-2 pr-4 text-sm font-medium text-gray-900">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accountColorMap[at.name] }} />
+                              {at.name}
+                            </div>
+                          </td>
                           <td className="py-2 text-sm text-right">{formatCurrency(at.year1)}</td>
                           <td className="py-2 text-sm text-right">{formatCurrency(at.year2)}</td>
                           <td className="py-2 text-sm text-right">{formatCurrency(at.year3)}</td>
@@ -516,50 +574,68 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                       );
                     })()
                   ) : (
-                    // Side-by-side detail tables for multiple accounts
+                    // Side-by-side detail tables for multiple accounts — each with its own color
                     <div className="flex gap-4 overflow-x-auto">
                       {activeAccounts.map((acct) => {
                         const { baselineRow, useCaseRows } = getAccountDetailRows(acct.name, idx);
                         const gt = getAccountGrandTotal(acct.name, idx);
+                        const acctColor = accountColorMap[acct.name];
                         return (
-                          <div key={acct.name} className="flex-1 min-w-[400px]">
+                          <div
+                            key={acct.name}
+                            className="flex-1 min-w-[400px] rounded-lg overflow-hidden border"
+                            style={{ borderColor: acctColor }}
+                          >
+                            {/* Account color header */}
+                            <div
+                              className="px-3 py-2 flex items-center gap-2"
+                              style={{ backgroundColor: `${acctColor}18`, borderBottom: `2px solid ${acctColor}` }}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: acctColor }}
+                              />
+                              <span className="text-sm font-bold" style={{ color: acctColor }}>
+                                {acct.name}
+                              </span>
+                            </div>
                             <table className="w-full">
                               <thead>
                                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                  <td className="py-2 pr-2" style={{ width: '40%' }}>$DBUs List ({acct.name.toUpperCase()})</td>
+                                  <td className="py-2 px-3" style={{ width: '40%' }}>$DBUs List</td>
                                   <td className="py-2 text-right" style={{ width: '15%' }}>Y1</td>
                                   <td className="py-2 text-right" style={{ width: '15%' }}>Y2</td>
                                   <td className="py-2 text-right" style={{ width: '15%' }}>Y3</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>Total</td>
+                                  <td className="py-2 pr-3 text-right" style={{ width: '15%' }}>Total</td>
                                 </tr>
                               </thead>
                               <tbody>
                                 {baselineRow && (
                                   <tr className="border-t hover:bg-gray-50">
-                                    <td className="py-2 pr-2 text-sm text-gray-800">Existing - Live Use Cases</td>
+                                    <td className="py-2 px-3 text-sm text-gray-800">Existing - Live Use Cases</td>
                                     <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year1)}</td>
                                     <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year2)}</td>
                                     <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year3)}</td>
-                                    <td className="py-2 text-sm text-right font-semibold">{formatCurrency(baselineRow.total)}</td>
+                                    <td className="py-2 pr-3 text-sm text-right font-semibold">{formatCurrency(baselineRow.total)}</td>
                                   </tr>
                                 )}
                                 {useCaseRows.map((row: any, ri: number) => (
                                   <tr key={ri} className="border-t hover:bg-gray-50">
-                                    <td className="py-2 pr-2 text-sm text-gray-600 pl-2">
+                                    <td className="py-2 px-3 text-sm text-gray-600 pl-4">
                                       {row.use_case_area.replace(/^\s*↳\s*/, '')}
                                     </td>
                                     <td className="py-2 text-sm text-right">{formatCurrency(row.year1)}</td>
                                     <td className="py-2 text-sm text-right">{formatCurrency(row.year2)}</td>
                                     <td className="py-2 text-sm text-right">{formatCurrency(row.year3)}</td>
-                                    <td className="py-2 text-sm text-right font-semibold">{formatCurrency(row.total)}</td>
+                                    <td className="py-2 pr-3 text-sm text-right font-semibold">{formatCurrency(row.total)}</td>
                                   </tr>
                                 ))}
-                                <tr className="border-t-2 border-gray-300 bg-blue-50 font-bold">
-                                  <td className="py-2 pr-2 text-sm">Total</td>
+                                <tr className="border-t-2 font-bold" style={{ backgroundColor: `${acctColor}12` }}>
+                                  <td className="py-2 px-3 text-sm" style={{ color: acctColor }}>Total</td>
                                   <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year1) : '$0'}</td>
                                   <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year2) : '$0'}</td>
                                   <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year3) : '$0'}</td>
-                                  <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.total) : '$0'}</td>
+                                  <td className="py-2 pr-3 text-sm text-right">{gt ? formatCurrency(gt.total) : '$0'}</td>
                                 </tr>
                               </tbody>
                             </table>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import SummaryTab from './components/SummaryTab';
 import HistoricalTab from './components/HistoricalTab';
 import ScenarioTab from './components/ScenarioTab';
@@ -44,11 +44,30 @@ function calcUseCaseMonthly(uc: any): number[] {
   return months;
 }
 
+function loadSavedAccounts(): AccountConfig[] {
+  try {
+    const saved = localStorage.getItem('demandplan_accounts');
+    if (saved) {
+      const parsed = JSON.parse(saved) as AccountConfig[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_ACCOUNTS;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('summary');
-  const [accounts, setAccounts] = useState<AccountConfig[]>(DEFAULT_ACCOUNTS);
+  const [accounts, setAccounts] = useState<AccountConfig[]>(loadSavedAccounts);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  // Persist accounts to localStorage whenever they change
+  useEffect(() => {
+    const valid = accounts.filter(a => a.name.trim());
+    if (valid.length > 0) {
+      localStorage.setItem('demandplan_accounts', JSON.stringify(accounts));
+    }
+  }, [accounts]);
 
   const updateAccount = (index: number, field: keyof AccountConfig, value: string) => {
     setAccounts(prev => prev.map((a, i) => i === index ? { ...a, [field]: value } : a));
