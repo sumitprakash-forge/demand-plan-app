@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-import { formatCurrency } from './api';
+import { formatCurrency, fetchSummaryAll } from './api';
 
 interface ExportOptions {
   account: string;
@@ -73,54 +73,79 @@ function applyPercentFormat(ws: XLSX.WorkSheet, col: number, startRow: number) {
   }
 }
 
-export function exportToXLS(opts: ExportOptions) {
+export async function exportToXLS(opts: ExportOptions) {
   const wb = XLSX.utils.book_new();
   const months = [...new Set(opts.historicalData.map(r => r.month))].sort();
 
-  // ── Sheet 1: Demand Plan Summary ──
-  const summaryRows: any[][] = [
-    ['Demand Plan Summary'],
-    ['Account', opts.account],
-    ['Scenario', `Scenario ${opts.scenario}`],
-    ['Baseline Growth Rate', `${opts.baselineGrowthRate}% MoM`],
-    [''],
-    ['', '', 'Year 1', 'Year 2', 'Year 3', 'Total'],
-    [
-      'Existing Baseline',
-      `(with ${opts.baselineGrowthRate}% MoM growth)`,
-      opts.projections.baseYearTotals[0],
-      opts.projections.baseYearTotals[1],
-      opts.projections.baseYearTotals[2],
-      opts.projections.baseYearTotals.reduce((a, b) => a + b, 0),
-    ],
-  ];
+  // ── Sheet 1: Demand Plan Summary (all 3 scenarios) ──
+  let summaryAllData: any = null;
+  try {
+    summaryAllData = await fetchSummaryAll(opts.account);
+  } catch (e) {
+    // Fallback: not available
+  }
 
-  // Add each use case
-  opts.useCases.filter(uc => uc.scenarios[opts.scenario - 1]).forEach(uc => {
-    const yT = [0, 0, 0];
-    uc.monthlyProjection.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
-    summaryRows.push([
-      `  ${uc.name}`,
-      `${uc.domain} | ${uc.rampType} | M${uc.onboardingMonth}→M${uc.liveMonth}`,
-      yT[0], yT[1], yT[2], yT.reduce((a, b) => a + b, 0),
-    ]);
-  });
+  const summaryRows: any[][] = [];
+  // Row 1-2: Header
+  summaryRows.push(['', 'Databricks Pricing:']);
+  summaryRows.push(['', 'Note: All Prices are Databricks List Price.']);
+  summaryRows.push(['']); // blank
+  summaryRows.push(['']); // blank
 
-  summaryRows.push([
-    'Grand Total', '',
-    opts.projections.yearTotals[0],
-    opts.projections.yearTotals[1],
-    opts.projections.yearTotals[2],
-    opts.projections.yearTotals.reduce((a, b) => a + b, 0),
-  ]);
+  const scenarios = summaryAllData?.scenarios || [];
+  for (let si = 0; si < 3; si++) {
+    const scenarioData = scenarios[si];
+    const scenarioNum = si + 1;
+    const description = scenarioData?.description || `Scenario ${scenarioNum}`;
 
-  summaryRows.push(['']);
-  summaryRows.push(['Assumptions']);
-  summaryRows.push([opts.assumptions]);
+    // Find rows from the scenario data
+    const grandTotal = scenarioData?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
+    const baselineRow = scenarioData?.summary_rows?.find(
+      (r: any) => !r.is_use_case && r.use_case_area !== 'Grand Total' && r.use_case_area !== 'New Use Cases'
+    );
+    const useCaseRows = scenarioData?.summary_rows?.filter((r: any) => r.is_use_case) || [];
+
+    const y1 = grandTotal?.year1 || 0;
+    const y2 = grandTotal?.year2 || 0;
+    const y3 = grandTotal?.year3 || 0;
+    const total = grandTotal?.total || 0;
+
+    // Scenario header
+    summaryRows.push(['', `Scenario ${scenarioNum} (${description})`]);
+    summaryRows.push(['']); // blank
+
+    // SUMMARY section
+    summaryRows.push(['', 'SUMMARY']);
+    summaryRows.push(['', 'Total $DBUs (DBCU at List)', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
+    summaryRows.push(['', opts.account, y1, y2, y3, total]);
+    summaryRows.push(['', 'Grand Total', y1, y2, y3, total]);
+    summaryRows.push(['']); // blank
+    summaryRows.push(['']); // blank
+
+    // Detail section
+    summaryRows.push(['', '$DBUs List', 'Year 1', 'Year 2', 'Year 3', 'Total']);
+    summaryRows.push(['', `Use Case Areas (${opts.account.toUpperCase()})`]);
+
+    // Existing - Live Use Cases (baseline)
+    if (baselineRow) {
+      summaryRows.push(['', 'Existing - Live Use Cases', baselineRow.year1, baselineRow.year2, baselineRow.year3, baselineRow.total]);
+    }
+
+    // Each active use case
+    useCaseRows.forEach((row: any) => {
+      const name = (row.use_case_area || '').replace(/^\s*↳\s*/, '').trim();
+      summaryRows.push(['', name, row.year1, row.year2, row.year3, row.total]);
+    });
+
+    // Total row
+    summaryRows.push(['', 'Total $DBUs (DBCU at List)', y1, y2, y3, total]);
+    summaryRows.push(['']); // blank
+    summaryRows.push(['']); // blank
+  }
 
   const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
-  // Set column widths
-  ws1['!cols'] = [{ wch: 40 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+  // Set column widths: A=spacer, B=label, C-F=values
+  ws1['!cols'] = [{ wch: 4 }, { wch: 40 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
   applyDollarFormat(ws1);
   XLSX.utils.book_append_sheet(wb, ws1, 'Demand Plan Summary');
 

@@ -328,9 +328,20 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
         {"year": "Year 3", "value": round(grand_y3), "baseline": round(baseline_year_totals[2]), "new_uc": round(uc_year_totals[2])},
     ]
 
+    # Scenario description from assumptions_text or defaults
+    default_descriptions = {
+        1: "Existing Live Use Cases + Baseline Growth",
+        2: "Scenario 1 + Mid-term Use Cases",
+        3: "Scenario 2 + Long-term Migrations + Agentic AI",
+    }
+    description = (scenario_data or {}).get("assumptions_text", "").strip()
+    if not description:
+        description = default_descriptions.get(scenario, f"Scenario {scenario}")
+
     return {
         "account": account,
         "scenario": scenario,
+        "description": description,
         "total_t12m": round(total_t12m),
         "growth_rate": baseline_growth,
         "avg_monthly": round(avg_monthly),
@@ -339,6 +350,15 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
         "yearly_trend": yearly_trend,
         "active_use_cases": len(active_ucs),
     }
+
+
+@app.get("/api/summary-all")
+async def get_summary_all(account: str = Query(default="Walmart")):
+    """Return summary for all 3 scenarios."""
+    results = []
+    for s in [1, 2, 3]:
+        results.append(await get_summary(account, s))
+    return {"account": account, "scenarios": results}
 
 
 # ---------------------------------------------------------------------------

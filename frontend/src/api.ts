@@ -29,6 +29,12 @@ export async function fetchSummary(account: string, scenario: number) {
   return res.json();
 }
 
+export async function fetchSummaryAll(account: string) {
+  const res = await fetch(`${BASE}/summary-all?account=${encodeURIComponent(account)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function fetchScenario(account: string, scenario: number) {
   const res = await fetch(`${BASE}/scenario?account=${encodeURIComponent(account)}&scenario=${scenario}`);
   if (!res.ok) throw new Error(await res.text());

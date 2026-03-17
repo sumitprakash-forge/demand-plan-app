@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchSummary, fetchDomainMapping, formatCurrency } from '../api';
+import { fetchSummaryAll, fetchDomainMapping, formatCurrency } from '../api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
 const COLORS = [
@@ -10,6 +10,8 @@ const COLORS = [
   '#38BDF8', '#4ADE80', '#FB7185',
 ];
 
+const SCENARIO_COLORS = ['#3B82F6', '#8B5CF6', '#10B981'];
+
 interface Props {
   account: string;
   sheetUrl: string;
@@ -17,8 +19,7 @@ interface Props {
 }
 
 export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
-  const [scenario, setScenario] = useState(1);
-  const [data, setData] = useState<any>(null);
+  const [allData, setAllData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [mappingLoaded, setMappingLoaded] = useState(false);
@@ -35,8 +36,8 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
           console.warn('Domain mapping load warning:', e.message);
         }
       }
-      const result = await fetchSummary(account, scenario);
-      setData(result);
+      const result = await fetchSummaryAll(account);
+      setAllData(result);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -46,13 +47,29 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
 
   useEffect(() => {
     loadData();
-  }, [account, scenario]);
+  }, [account]);
+
+  // Build comparison bar chart data from all 3 scenarios
+  const comparisonChartData = allData?.scenarios
+    ? ['Year 1', 'Year 2', 'Year 3'].map((label, yi) => {
+        const entry: any = { year: label };
+        allData.scenarios.forEach((s: any, si: number) => {
+          const grandTotal = s.summary_rows.find((r: any) => r.use_case_area === 'Grand Total');
+          const yearKey = ['year1', 'year2', 'year3'][yi];
+          entry[`scenario${si + 1}`] = grandTotal ? grandTotal[yearKey] : 0;
+        });
+        return entry;
+      })
+    : [];
+
+  // Use domain breakdown from scenario 1 (baseline is the same for all)
+  const domainBreakdown = allData?.scenarios?.[0]?.domain_breakdown || [];
 
   return (
     <div className="space-y-6">
       {/* Config Bar */}
       <div className="bg-white rounded-lg shadow p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Account Name</label>
             <input
@@ -73,28 +90,12 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Scenario</label>
-            <div className="flex gap-2">
-              {[1, 2, 3].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setScenario(s)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    scenario === s
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Scenario {s}
-                </button>
-              ))}
-              <button
-                onClick={loadData}
-                className="ml-auto px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
-              >
-                Refresh
-              </button>
-            </div>
+            <button
+              onClick={loadData}
+              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
+            >
+              Refresh
+            </button>
           </div>
         </div>
       </div>
@@ -102,82 +103,17 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
       {loading && <div className="text-center py-8 text-gray-500">Loading summary data...</div>}
       {error && <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">{error}</div>}
 
-      {data && (
+      {allData && allData.scenarios && (
         <>
-          {/* Summary Table */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-4 py-3 bg-gray-50 border-b">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Demand Plan Summary — Scenario {scenario}
-              </h2>
-              <p className="text-sm text-gray-500">
-                T12M Baseline: {formatCurrency(data.total_t12m)} |
-                Growth: {(data.growth_rate * 100).toFixed(1)}% MoM |
-                Active Use Cases: {data.active_use_cases || 0}
-              </p>
-            </div>
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 text-left text-sm font-medium text-gray-500">
-                  <th className="px-4 py-3">Use Case Area</th>
-                  <th className="px-4 py-3 text-right">$DBUs Year 1</th>
-                  <th className="px-4 py-3 text-right">$DBUs Year 2</th>
-                  <th className="px-4 py-3 text-right">$DBUs Year 3</th>
-                  <th className="px-4 py-3 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.summary_rows.map((row: any, i: number) => {
-                  const isGrandTotal = row.use_case_area === 'Grand Total';
-                  const isUseCase = row.is_use_case;
-                  const isNewUCHeader = row.use_case_area === 'New Use Cases';
-                  return (
-                    <tr
-                      key={i}
-                      className={`border-t ${
-                        isGrandTotal ? 'bg-blue-50 font-bold border-t-2 border-gray-300' :
-                        isNewUCHeader ? 'bg-purple-50 font-semibold' :
-                        isUseCase ? 'text-gray-600' :
-                        'hover:bg-gray-50'
-                      }`}
-                    >
-                      <td className={`px-4 py-2.5 text-sm ${isUseCase ? 'pl-8 text-gray-500' : ''}`}>{row.use_case_area}</td>
-                      <td className="px-4 py-2.5 text-sm text-right">{formatCurrency(row.year1)}</td>
-                      <td className="px-4 py-2.5 text-sm text-right">{formatCurrency(row.year2)}</td>
-                      <td className="px-4 py-2.5 text-sm text-right">{formatCurrency(row.year3)}</td>
-                      <td className={`px-4 py-2.5 text-sm text-right ${isGrandTotal ? 'font-bold' : 'font-semibold'}`}>{formatCurrency(row.total)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Yearly Trend */}
-            <div className="bg-white rounded-lg shadow p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Yearly $DBU Trend</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={data.yearly_trend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="year" />
-                  <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
-                  <Legend />
-                  <Bar dataKey="baseline" name="Existing Baseline" stackId="a" fill="#3B82F6" />
-                  <Bar dataKey="new_uc" name="New Use Cases" stackId="a" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
             {/* Domain Breakdown Pie */}
             <div className="bg-white rounded-lg shadow p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Domain Breakdown (T12M)</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
-                    data={data.domain_breakdown.slice(0, 15)}
+                    data={domainBreakdown.slice(0, 15)}
                     dataKey="value"
                     nameKey="domain"
                     cx="50%"
@@ -188,7 +124,7 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
                     }
                     labelLine={false}
                   >
-                    {data.domain_breakdown.slice(0, 15).map((_: any, idx: number) => (
+                    {domainBreakdown.slice(0, 15).map((_: any, idx: number) => (
                       <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                     ))}
                   </Pie>
@@ -196,7 +132,142 @@ export default function SummaryTab({ account, sheetUrl, setSheetUrl }: Props) {
                 </PieChart>
               </ResponsiveContainer>
             </div>
+
+            {/* Yearly Trend - All 3 scenarios side by side */}
+            <div className="bg-white rounded-lg shadow p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Yearly $DBU Comparison — All Scenarios</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={comparisonChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="year" />
+                  <YAxis tickFormatter={(v: number) => formatCurrency(v)} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                  <Legend />
+                  <Bar dataKey="scenario1" name="Scenario 1" fill={SCENARIO_COLORS[0]} />
+                  <Bar dataKey="scenario2" name="Scenario 2" fill={SCENARIO_COLORS[1]} />
+                  <Bar dataKey="scenario3" name="Scenario 3" fill={SCENARIO_COLORS[2]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
+
+          {/* Header */}
+          <div className="bg-white rounded-lg shadow p-4">
+            <h2 className="text-lg font-bold text-gray-900">Databricks Pricing:</h2>
+            <p className="text-sm text-gray-500">Note: All Prices are Databricks List Price.</p>
+          </div>
+
+          {/* All 3 Scenarios stacked */}
+          {allData.scenarios.map((scenarioData: any, idx: number) => {
+            const scenarioNum = idx + 1;
+            const description = scenarioData.description || `Scenario ${scenarioNum}`;
+            const grandTotal = scenarioData.summary_rows.find((r: any) => r.use_case_area === 'Grand Total');
+
+            // Separate baseline and use case rows
+            const baselineRow = scenarioData.summary_rows.find(
+              (r: any) => !r.is_use_case && r.use_case_area !== 'Grand Total' && r.use_case_area !== 'New Use Cases'
+            );
+            const useCaseRows = scenarioData.summary_rows.filter((r: any) => r.is_use_case);
+
+            return (
+              <div key={scenarioNum} className="bg-white rounded-lg shadow overflow-hidden">
+                {/* Scenario header */}
+                <div
+                  className="px-4 py-3 border-b-2"
+                  style={{ borderColor: SCENARIO_COLORS[idx], backgroundColor: `${SCENARIO_COLORS[idx]}10` }}
+                >
+                  <h2 className="text-lg font-bold" style={{ color: SCENARIO_COLORS[idx] }}>
+                    Scenario {scenarioNum} ({description})
+                  </h2>
+                </div>
+
+                {/* SUMMARY box */}
+                <div className="px-4 pt-4 pb-2">
+                  <h3 className="text-sm font-bold text-gray-800 mb-2 uppercase tracking-wide">Summary</h3>
+                  <table className="w-full mb-4">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        <td className="py-2 pr-4" style={{ width: '40%' }}>Total $DBUs (DBCU at List)</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 1</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 2</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 3</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Grand Total</td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t">
+                        <td className="py-2 pr-4 text-sm font-medium text-gray-900">{account}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year1) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year2) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year3) : '$0'}</td>
+                        <td className="py-2 text-sm text-right font-semibold">{grandTotal ? formatCurrency(grandTotal.total) : '$0'}</td>
+                      </tr>
+                      <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
+                        <td className="py-2 pr-4 text-sm">Grand Total</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year1) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year2) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year3) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.total) : '$0'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Detail table: Use Case Areas */}
+                <div className="px-4 pb-4">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        <td className="py-2 pr-4" style={{ width: '40%' }}>$DBUs List</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 1</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 2</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 3</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>Total</td>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* Use Case Areas header */}
+                      <tr className="border-t bg-gray-50">
+                        <td colSpan={5} className="py-2 text-sm font-semibold text-gray-700">
+                          Use Case Areas ({account.toUpperCase()})
+                        </td>
+                      </tr>
+                      {/* Existing - Live Use Cases (baseline) */}
+                      {baselineRow && (
+                        <tr className="border-t hover:bg-gray-50">
+                          <td className="py-2 pr-4 text-sm text-gray-800">Existing - Live Use Cases</td>
+                          <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year1)}</td>
+                          <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year2)}</td>
+                          <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year3)}</td>
+                          <td className="py-2 text-sm text-right font-semibold">{formatCurrency(baselineRow.total)}</td>
+                        </tr>
+                      )}
+                      {/* Each active use case */}
+                      {useCaseRows.map((row: any, ri: number) => (
+                        <tr key={ri} className="border-t hover:bg-gray-50">
+                          <td className="py-2 pr-4 text-sm text-gray-600 pl-2">
+                            {row.use_case_area.replace(/^\s*↳\s*/, '')}
+                          </td>
+                          <td className="py-2 text-sm text-right">{formatCurrency(row.year1)}</td>
+                          <td className="py-2 text-sm text-right">{formatCurrency(row.year2)}</td>
+                          <td className="py-2 text-sm text-right">{formatCurrency(row.year3)}</td>
+                          <td className="py-2 text-sm text-right font-semibold">{formatCurrency(row.total)}</td>
+                        </tr>
+                      ))}
+                      {/* Total row */}
+                      <tr className="border-t-2 border-gray-300 bg-blue-50 font-bold">
+                        <td className="py-2 pr-4 text-sm">Total $DBUs (DBCU at List)</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year1) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year2) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.year3) : '$0'}</td>
+                        <td className="py-2 text-sm text-right">{grandTotal ? formatCurrency(grandTotal.total) : '$0'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
         </>
       )}
     </div>

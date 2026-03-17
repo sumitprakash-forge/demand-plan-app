@@ -112,7 +112,7 @@ export default function App() {
         yearTotals[y] += totalMonths[i];
       }
 
-      const filename = exportToXLS({
+      const filename = await exportToXLS({
         account,
         scenario: scenarioNum,
         historicalData,
