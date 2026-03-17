@@ -955,7 +955,7 @@ export default function ScenarioTab({ accounts }: Props) {
       {selectedAccount && (
         <ScenarioAccountView
           key={selectedAccount.name}
-          account={selectedAccount.name}
+          account={selectedAccount.sfdc_id || selectedAccount.name}
           sheetUrl={selectedAccount.sheetUrl}
         />
       )}

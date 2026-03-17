@@ -7,7 +7,7 @@ from typing import Optional
 SKU_PRICES_SQL = """
 SELECT DISTINCT sku, cloud, CAST(list_price AS DOUBLE) as list_price
 FROM main.fin_live_gold.paid_usage_metering
-WHERE sfdc_account_name = '{account}'
+WHERE ({account_filter})
     AND date >= date_add(current_date(), -90)
     AND list_price > 0
 ORDER BY sku, cloud
@@ -23,35 +23,43 @@ SELECT
     sum(usage_amount) as total_dbus,
     sum(usage_dollars_at_list) as dollar_dbu_list
 FROM main.fin_live_gold.paid_usage_metering
-WHERE sfdc_account_name = '{account}'
+WHERE ({account_filter})
     AND date >= date_add(current_date(), -365)
 GROUP BY sfdc_workspace_name, cloud, date_format(date, 'yyyy-MM'), sku
 ORDER BY month, sfdc_workspace_name
 """
 
+ACCOUNT_NAME_SQL = """
+SELECT DISTINCT sfdc_account_name
+FROM main.fin_live_gold.paid_usage_metering
+WHERE ({account_filter})
+    AND date >= date_add(current_date(), -90)
+LIMIT 5
+"""
+
+
+def _build_account_filter(account: str) -> str:
+    """Build SQL filter — detects if input is SFDC account ID (18-char alphanumeric) or name."""
+    account = account.strip()
+    # SFDC IDs are typically 15 or 18 chars, start with 001
+    if len(account) in (15, 18) and account[:3] == '001':
+        return f"sfdc_account_id = '{account}'"
+    else:
+        return f"sfdc_account_name = '{account}'"
+
 
 def query_consumption(account: str = "Walmart") -> list[dict]:
     """
     Query Logfood for trailing 12 months consumption.
-    Uses Databricks SDK with profile 'logfood'.
-    Returns list of dicts with keys: workspace_name, month, sku_name, total_dbus, dollar_dbu_list
+    Accepts either SFDC account name or SFDC account ID (auto-detected).
     """
     from databricks.sdk import WorkspaceClient
 
     w = WorkspaceClient(profile="logfood")
+    warehouse_id = "071969b1ec9a91ca"
 
-    # Find a running SQL warehouse — prefer the shared endpoint
-    warehouse_id = "071969b1ec9a91ca"  # Shared SQL Endpoint - Cutting Edge
-    try:
-        warehouses = list(w.warehouses.list())
-        for wh in warehouses:
-            if wh.state and wh.state.value == "RUNNING":
-                warehouse_id = wh.id
-                break
-    except Exception:
-        pass  # use default
-
-    sql = CONSUMPTION_SQL.format(account=account)
+    account_filter = _build_account_filter(account)
+    sql = CONSUMPTION_SQL.format(account_filter=account_filter)
 
     result = w.statement_execution.execute_statement(
         warehouse_id=warehouse_id,
@@ -106,7 +114,8 @@ def query_sku_prices(account: str = "Walmart") -> list[dict]:
     except Exception:
         pass
 
-    sql = SKU_PRICES_SQL.format(account=account)
+    account_filter = _build_account_filter(account)
+    sql = SKU_PRICES_SQL.format(account_filter=account_filter)
 
     result = w.statement_execution.execute_statement(
         warehouse_id=warehouse_id,

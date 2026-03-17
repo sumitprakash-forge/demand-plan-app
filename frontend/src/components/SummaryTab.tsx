@@ -60,7 +60,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
       const results = await Promise.all(
         accounts.filter(a => a.name.trim()).map(async (a) => {
           try {
-            const result = await fetchSummaryAll(a.name);
+            const result = await fetchSummaryAll(a.sfdc_id || a.name);
             return { accountName: a.name, data: result };
           } catch (e: any) {
             return { accountName: a.name, data: null, error: e.message };

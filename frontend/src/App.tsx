@@ -8,7 +8,8 @@ import { exportToXLS } from './export';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
 
 export interface AccountConfig {
-  name: string;
+  name: string;        // Display name
+  sfdc_id: string;     // SFDC Account ID (used for Logfood queries) — or account name as fallback
   sheetUrl: string;
 }
 
@@ -20,8 +21,8 @@ const TABS = [
 ];
 
 const DEFAULT_ACCOUNTS: AccountConfig[] = [
-  { name: 'Kroger', sheetUrl: '' },
-  { name: '84.51', sheetUrl: '' },
+  { name: 'Kroger', sfdc_id: 'Kroger', sheetUrl: '' },
+  { name: '84.51', sfdc_id: '84.51', sheetUrl: '' },
 ];
 
 // Calculate use case monthly projection (same logic as ScenarioTab)
@@ -55,7 +56,7 @@ export default function App() {
   };
 
   const addAccount = () => {
-    setAccounts(prev => [...prev, { name: '', sheetUrl: '' }]);
+    setAccounts(prev => [...prev, { name: '', sfdc_id: '', sheetUrl: '' }]);
   };
 
   const removeAccount = (index: number) => {
@@ -174,20 +175,29 @@ export default function App() {
               <div className="space-y-2">
                 <label className="block text-xs font-medium text-gray-500 mb-1">Accounts</label>
                 {accounts.map((acct, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
+                  <div key={idx} className="flex items-center gap-2 mb-1">
                     <input
                       type="text"
                       value={acct.name}
                       onChange={(e) => updateAccount(idx, 'name', e.target.value)}
-                      placeholder="Account name"
-                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 w-32"
+                      placeholder="Display name"
+                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 w-28"
+                      title="Display name for this account"
+                    />
+                    <input
+                      type="text"
+                      value={acct.sfdc_id}
+                      onChange={(e) => updateAccount(idx, 'sfdc_id', e.target.value)}
+                      placeholder="SFDC Account ID or Name"
+                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-48 font-mono text-xs"
+                      title="SFDC Account ID (18-char) or exact account name in Logfood"
                     />
                     <input
                       type="text"
                       value={acct.sheetUrl}
                       onChange={(e) => updateAccount(idx, 'sheetUrl', e.target.value)}
-                      placeholder="Sheet URL (optional)"
-                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-64"
+                      placeholder="Domain Mapping Sheet URL"
+                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-56"
                     />
                     {accounts.length > 1 && (
                       <button

@@ -604,7 +604,7 @@ export default function HistoricalTab({ accounts }: Props) {
       {selectedAccount && (
         <HistoricalAccountView
           key={selectedAccount.name}
-          account={selectedAccount.name}
+          account={selectedAccount.sfdc_id || selectedAccount.name}
           sheetUrl={selectedAccount.sheetUrl}
         />
       )}

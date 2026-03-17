@@ -165,7 +165,7 @@ export default function OverviewTab({ accounts }: Props) {
       {selectedAccount && (
         <OverviewAccountView
           key={selectedAccount.name}
-          account={selectedAccount.name}
+          account={selectedAccount.sfdc_id || selectedAccount.name}
         />
       )}
     </div>
