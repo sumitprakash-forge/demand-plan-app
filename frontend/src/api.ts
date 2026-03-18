@@ -74,6 +74,14 @@ export async function fetchSkuPrices(account: string) {
   return res.json();
 }
 
+export async function fetchConsumptionForecast(account: string, scenario: number, months = 24, startDate = '') {
+  const params = new URLSearchParams({ account, scenario: String(scenario), months: String(months) });
+  if (startDate) params.set('start_date', startDate);
+  const res = await fetch(`${BASE}/consumption-forecast?${params}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function fetchAccountOverview(account: string) {
   const res = await fetch(`${BASE}/account-overview?account=${encodeURIComponent(account)}`);
   if (!res.ok) throw new Error(await res.text());

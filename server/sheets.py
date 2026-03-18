@@ -8,8 +8,16 @@ from typing import Optional
 
 
 def get_google_token() -> str:
-    """Get Google auth token using gcloud or the Claude plugin auth helper."""
-    # Try Claude plugin auth helper first
+    """Get Google auth token using gcloud (preferred, has gdrive scope) or Claude plugin helper."""
+    # Try gcloud first — user should have run 'gcloud auth login --enable-gdrive-access'
+    result = subprocess.run(
+        ["gcloud", "auth", "print-access-token"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+
+    # Fallback to Claude plugin auth helper
     plugin_base = os.path.expanduser("~/.claude/plugins/cache/fe-vibe/fe-google-tools")
     if os.path.isdir(plugin_base):
         for entry in os.listdir(plugin_base):
@@ -22,15 +30,7 @@ def get_google_token() -> str:
                 if result.returncode == 0 and result.stdout.strip():
                     return result.stdout.strip()
 
-    # Fallback to gcloud
-    result = subprocess.run(
-        ["gcloud", "auth", "print-access-token"],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-
-    raise RuntimeError("Could not obtain Google auth token. Run 'gcloud auth login' first.")
+    raise RuntimeError("Could not obtain Google auth token. Run 'gcloud auth login --enable-gdrive-access' first.")
 
 
 def extract_sheet_id(url: str) -> str:

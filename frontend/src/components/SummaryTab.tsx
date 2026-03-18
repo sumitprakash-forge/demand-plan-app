@@ -44,6 +44,18 @@ interface LoadingStep {
   error?: string;
 }
 
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function getYearLabel(contractStartDate: string, yearIdx: number): string {
+  if (!contractStartDate) return `Year ${yearIdx + 1}`;
+  const [y, m] = contractStartDate.split('-').map(Number);
+  const startY = y + yearIdx;
+  const startM = m - 1; // 0-indexed
+  const endM = (startM + 11) % 12;
+  const endY = startY + (startM + 11 >= 12 ? 1 : 0);
+  return `Y${yearIdx + 1} (${MONTH_NAMES[startM]}'${String(startY).slice(2)}–${MONTH_NAMES[endM]}'${String(endY).slice(2)})`;
+}
+
 export default function SummaryTab({ accounts, setAccounts }: Props) {
   const [accountDataMap, setAccountDataMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -114,7 +126,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
         // Step 2: Fetch consumption data (for row count display)
         let rowCount = 0;
         try {
-          const consumptionRes = await fetchConsumption(a.sfdc_id || a.name);
+          const consumptionRes = await fetchConsumption(a.sfdc_id);
           rowCount = consumptionRes?.data?.length || 0;
           updateStep(`${a.name}-consumption`, { step: `${a.name} — consumption data (${rowCount.toLocaleString()} rows)`, done: true });
         } catch (e: any) {
@@ -124,7 +136,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
         // Step 3: Fetch summary
         updateStep(`${a.name}-summary`, { step: `${a.name} — building summary...`, done: false });
         try {
-          const result = await fetchSummaryAll(a.sfdc_id || a.name);
+          const result = await fetchSummaryAll(a.sfdc_id);
           newDataMap[a.name] = result;
           updateStep(`${a.name}-summary`, { step: `${a.name} — summary ready`, done: true });
           loadedAccountsRef.current.add(a.name);
@@ -266,7 +278,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
             </button>
           </div>
           {accounts.map((acct, idx) => (
-            <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-4 items-end">
+            <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto_auto] gap-4 items-end">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Account Name</label>
                 <input
@@ -288,6 +300,20 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                   }}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                   placeholder="Google Sheets URL"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Contract Start (M1)</label>
+                <input
+                  type="month"
+                  value={acct.contractStartDate || ''}
+                  onChange={(e) => {
+                    const updated = [...accounts];
+                    updated[idx] = { ...updated[idx], contractStartDate: e.target.value };
+                    setAccounts(updated);
+                  }}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  title="Contract start month — used as M1 of Year 1"
                 />
               </div>
               <div className="flex items-end gap-1">
@@ -447,6 +473,12 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
             const firstScenarioData = accountDataMap[activeAccounts[0]?.name]?.scenarios?.[idx];
             const description = firstScenarioData?.description || `Scenario ${scenarioNum}`;
 
+            // Year labels — use first active account's contract start date
+            const csd = accounts.find(a => a.name === activeAccounts[0]?.name)?.contractStartDate || '';
+            const y1Label = getYearLabel(csd, 0);
+            const y2Label = getYearLabel(csd, 1);
+            const y3Label = getYearLabel(csd, 2);
+
             // Compute per-account grand totals and cross-account grand total
             const accountTotals = activeAccounts.map(a => {
               const gt = getAccountGrandTotal(a.name, idx);
@@ -485,9 +517,9 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                     <thead>
                       <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                         <td className="py-2 pr-4" style={{ width: '40%' }}>Total $DBUs (DBCU at List)</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 1</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 2</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>Year 3</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>{y1Label}</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>{y2Label}</td>
+                        <td className="py-2 text-right" style={{ width: '15%' }}>{y3Label}</td>
                         <td className="py-2 text-right" style={{ width: '15%' }}>Grand Total</td>
                       </tr>
                     </thead>
@@ -530,9 +562,9 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                           <thead>
                             <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                               <td className="py-2 pr-4" style={{ width: '40%' }}>$DBUs List</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>Year 1</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>Year 2</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>Year 3</td>
+                              <td className="py-2 text-right" style={{ width: '15%' }}>{y1Label}</td>
+                              <td className="py-2 text-right" style={{ width: '15%' }}>{y2Label}</td>
+                              <td className="py-2 text-right" style={{ width: '15%' }}>{y3Label}</td>
                               <td className="py-2 text-right" style={{ width: '15%' }}>Total</td>
                             </tr>
                           </thead>
@@ -603,9 +635,9 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                               <thead>
                                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                                   <td className="py-2 px-3" style={{ width: '40%' }}>$DBUs List</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>Y1</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>Y2</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>Y3</td>
+                                  <td className="py-2 text-right" style={{ width: '15%' }}>{getYearLabel(accounts.find(a => a.name === acct.name)?.contractStartDate || '', 0)}</td>
+                                  <td className="py-2 text-right" style={{ width: '15%' }}>{getYearLabel(accounts.find(a => a.name === acct.name)?.contractStartDate || '', 1)}</td>
+                                  <td className="py-2 text-right" style={{ width: '15%' }}>{getYearLabel(accounts.find(a => a.name === acct.name)?.contractStartDate || '', 2)}</td>
                                   <td className="py-2 pr-3 text-right" style={{ width: '15%' }}>Total</td>
                                 </tr>
                               </thead>

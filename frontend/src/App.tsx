@@ -4,24 +4,27 @@ import HistoricalTab from './components/HistoricalTab';
 import ScenarioTab from './components/ScenarioTab';
 // ForecastTab removed
 import OverviewTab from './components/OverviewTab';
+import ConsumptionForecastTab from './components/ConsumptionForecastTab';
 import { exportToXLS } from './export';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
 
 export interface AccountConfig {
   name: string;        // Display name
-  sfdc_id: string;     // SFDC Account ID (used for Logfood queries) — or account name as fallback
+  sfdc_id: string;     // SFDC Account ID — always used as the backend key for all data
   sheetUrl: string;
+  contractStartDate: string; // YYYY-MM, e.g. "2026-04" — defines M1 of Year 1
 }
 
 const TABS = [
   { id: 'summary', label: 'Demand Plan Summary' },
   { id: 'historical', label: 'Historical Consumption (T12M)' },
   { id: 'scenario', label: 'Scenario Builder' },
+  { id: 'consumption-forecast', label: 'Consumption Forecast' },
   { id: 'overview', label: 'Account Overview' },
 ];
 
 const DEFAULT_ACCOUNTS: AccountConfig[] = [
-  { name: 'Kroger', sfdc_id: 'Kroger', sheetUrl: '' },
+  { name: 'Kroger', sfdc_id: 'Kroger', sheetUrl: '', contractStartDate: '' },
 ];
 
 // Calculate use case monthly projection (same logic as ScenarioTab)
@@ -52,7 +55,7 @@ function loadSavedAccounts(): AccountConfig[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch { /* ignore */ }
-  return [{ name: '', sfdc_id: '', sheetUrl: '' }];
+  return [{ name: '', sfdc_id: '', sheetUrl: '', contractStartDate: '' }];
 }
 
 export default function App() {
@@ -77,7 +80,7 @@ export default function App() {
   };
 
   const addAccount = () => {
-    setAccounts(prev => [...prev, { name: '', sfdc_id: '', sheetUrl: '' }]);
+    setAccounts(prev => [...prev, { name: '', sfdc_id: '', sheetUrl: '', contractStartDate: '' }]);
   };
 
   const removeAccount = (index: number) => {
@@ -86,7 +89,7 @@ export default function App() {
   };
 
   const handleLoadAccount = useCallback(async (acct: AccountConfig) => {
-    const key = acct.name;
+    const key = acct.sfdc_id;
     setLoadingAccounts(prev => ({ ...prev, [key]: true }));
     setLoadStatus(prev => { const n = { ...prev }; delete n[key]; return n; });
     try {
@@ -108,7 +111,7 @@ export default function App() {
       await fetch('/api/clear-data', { method: 'DELETE' });
     } catch { /* ignore network errors */ }
     localStorage.removeItem('demandplan_accounts');
-    setAccounts([{ name: '', sfdc_id: '', sheetUrl: '' }]);
+    setAccounts([{ name: '', sfdc_id: '', sheetUrl: '', contractStartDate: '' }]);
     setClearing(false);
     window.location.reload();
   }, []);
@@ -118,7 +121,7 @@ export default function App() {
     setShowExportMenu(false);
     try {
       // Export using the first account for historical data (summary sheet shows all)
-      const account = accounts[0]?.name || 'Unknown';
+      const account = accounts[0]?.sfdc_id || 'Unknown';
       const sheetUrl = accounts[0]?.sheetUrl || '';
 
       // Fetch all data
@@ -250,24 +253,24 @@ export default function App() {
                     />
                     <button
                       onClick={() => handleLoadAccount(acct)}
-                      disabled={!acct.sfdc_id.trim() || loadingAccounts[acct.name]}
+                      disabled={!acct.sfdc_id.trim() || loadingAccounts[acct.sfdc_id]}
                       className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors
-                        ${loadStatus[acct.name] === 'ok' ? 'bg-green-50 text-green-700 border-green-300' :
-                          loadStatus[acct.name] === 'error' ? 'bg-red-50 text-red-600 border-red-300' :
+                        ${loadStatus[acct.sfdc_id] === 'ok' ? 'bg-green-50 text-green-700 border-green-300' :
+                          loadStatus[acct.sfdc_id] === 'error' ? 'bg-red-50 text-red-600 border-red-300' :
                           'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'}
                         disabled:opacity-40`}
                       title="Load data for this account"
                     >
-                      {loadingAccounts[acct.name] ? (
+                      {loadingAccounts[acct.sfdc_id] ? (
                         <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
-                      ) : loadStatus[acct.name] === 'ok' ? (
+                      ) : loadStatus[acct.sfdc_id] === 'ok' ? (
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
-                      ) : loadStatus[acct.name] === 'error' ? (
+                      ) : loadStatus[acct.sfdc_id] === 'error' ? (
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -276,7 +279,7 @@ export default function App() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                         </svg>
                       )}
-                      {loadingAccounts[acct.name] ? 'Loading…' : loadStatus[acct.name] === 'ok' ? 'Loaded' : loadStatus[acct.name] === 'error' ? 'Failed' : 'Load'}
+                      {loadingAccounts[acct.sfdc_id] ? 'Loading…' : loadStatus[acct.sfdc_id] === 'ok' ? 'Loaded' : loadStatus[acct.sfdc_id] === 'error' ? 'Failed' : 'Load'}
                     </button>
                     {accounts.length > 1 && (
                       <button
@@ -402,6 +405,7 @@ export default function App() {
         {activeTab === 'summary' && <SummaryTab accounts={accounts} setAccounts={setAccounts} />}
         {activeTab === 'historical' && <HistoricalTab accounts={accounts} />}
         {activeTab === 'scenario' && <ScenarioTab accounts={accounts} />}
+        {activeTab === 'consumption-forecast' && <ConsumptionForecastTab accounts={accounts} />}
         {activeTab === 'overview' && <OverviewTab accounts={accounts} />}
       </main>
     </div>

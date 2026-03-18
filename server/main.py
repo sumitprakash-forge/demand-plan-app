@@ -414,6 +414,110 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
     }
 
 
+@app.get("/api/consumption-forecast")
+async def get_consumption_forecast(
+    account: str = Query(default="Walmart"),
+    scenario: int = Query(default=1),
+    months: int = Query(default=24),
+    start_date: str = Query(default=""),
+):
+    """Return month-by-month consumption forecast rows for a scenario.
+
+    Each row is either the baseline or a single use case.
+    Months are calendar months starting from start_date (YYYY-MM) if provided,
+    otherwise from next month.
+    """
+    from datetime import date, timedelta
+    import calendar
+
+    # Build month labels — use start_date if provided, else next calendar month
+    if start_date:
+        try:
+            y, m = map(int, start_date.split("-"))
+            start = date(y, m, 1)
+        except Exception:
+            start = None
+    else:
+        start = None
+
+    if start is None:
+        today = date.today()
+        if today.month == 12:
+            start = date(today.year + 1, 1, 1)
+        else:
+            start = date(today.year, today.month + 1, 1)
+
+    month_labels = []
+    d = start
+    for _ in range(months):
+        month_labels.append(d.strftime("%b %Y"))
+        if d.month == 12:
+            d = date(d.year + 1, 1, 1)
+        else:
+            d = date(d.year, d.month + 1, 1)
+
+    # Get consumption for baseline
+    consumption = _consumption_cache.get(account) or _load_json(f"consumption_{account}") or []
+    total_t12m = sum(float(r.get("dollar_dbu_list", 0) or 0) for r in consumption)
+    months_count = max(len({r.get("month") for r in consumption if r.get("month")}), 1)
+    avg_monthly = total_t12m / months_count
+
+    # Get scenario config
+    key = f"{account}_{scenario}"
+    scenario_data = None
+    if key in _scenarios:
+        scenario_data = _scenarios[key].model_dump()
+    else:
+        scenario_data = _load_json(f"scenario_{key}")
+
+    baseline_growth = (scenario_data or {}).get("baseline_growth_rate", 0.02)
+    mom_rate = baseline_growth / 12
+
+    # Baseline row (months values)
+    baseline_values = [round(avg_monthly * ((1 + mom_rate) ** (i + 1))) for i in range(months)]
+
+    rows = [{
+        "type": "baseline",
+        "id": "baseline",
+        "label": f"Existing Baseline ({baseline_growth * 100:.1f}% MoM)",
+        "domain": "",
+        "values": baseline_values,
+        "onboarding_month": None,
+        "live_month": None,
+        "steady_state_dbu": None,
+    }]
+
+    # Use case rows — only active in this scenario
+    use_cases = (scenario_data or {}).get("new_use_cases", [])
+    active_ucs = [uc for uc in use_cases if uc.get("scenarios", [False, False, False])[scenario - 1]]
+
+    for uc in active_ucs:
+        uc_monthly_full = _calc_use_case_monthly(uc)  # 36 months
+        uc_values = [round(uc_monthly_full[i]) if i < 36 else 0 for i in range(months)]
+        rows.append({
+            "type": "use_case",
+            "id": uc.get("id", ""),
+            "label": uc.get("name", "Unnamed"),
+            "domain": uc.get("domain", ""),
+            "values": uc_values,
+            "onboarding_month": uc.get("onboardingMonth") or uc.get("onboarding_month"),
+            "live_month": uc.get("liveMonth") or uc.get("live_month"),
+            "steady_state_dbu": uc.get("steadyStateDbu") or uc.get("steady_state_dbu"),
+        })
+
+    # Total row
+    totals = [sum(row["values"][i] for row in rows) for i in range(months)]
+
+    return {
+        "account": account,
+        "scenario": scenario,
+        "month_labels": month_labels,
+        "rows": rows,
+        "totals": [round(t) for t in totals],
+        "baseline_growth": baseline_growth,
+    }
+
+
 @app.get("/api/summary-all")
 async def get_summary_all(account: str = Query(default="Walmart")):
     """Return summary for all 3 scenarios (fetched in parallel)."""

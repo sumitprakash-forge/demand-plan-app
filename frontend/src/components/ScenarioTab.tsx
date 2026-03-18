@@ -9,6 +9,24 @@ interface Props {
 interface InnerProps {
   account: string;
   sheetUrl: string;
+  contractStartDate?: string;
+}
+
+const MONTH_NAMES_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function getMonthLabel(n: number, contractStartDate?: string): string {
+  const yearIdx = Math.floor((n - 1) / 12);
+  const monthInYear = ((n - 1) % 12) + 1;
+  const mLabel = `M${monthInYear}Y${yearIdx + 1}`;
+  const csd = contractStartDate || (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  })();
+  const [y, m] = csd.split('-').map(Number);
+  const totalMonths = (y * 12 + m - 1) + (n - 1);
+  const calYear = Math.floor(totalMonths / 12);
+  const calMonth = (totalMonths % 12) + 1;
+  return `${mLabel} (${MONTH_NAMES_S[calMonth - 1]}'${String(calYear).slice(2)})`;
 }
 
 type RampType = 'linear' | 'hockey_stick';
@@ -158,7 +176,7 @@ function recalcSkuBreakdown(
   });
 }
 
-function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
+function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProps) {
   const [scenario, setScenario] = useState(1);
   const [baselineGrowthRate, setBaselineGrowthRate] = useState(2); // % MoM
   const [assumptionsText, setAssumptionsText] = useState('');
@@ -167,6 +185,7 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
   const [domains, setDomains] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expandedBaseline, setExpandedBaseline] = useState(true);
   const [expandedUC, setExpandedUC] = useState<string | null>(null);
@@ -195,32 +214,35 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
     fetchSkuPrices(account).then(setSkuPriceData).catch(console.error);
   }, [account]);
 
-  const loadScenario = async () => {
+  const parseUCs = (raw: any[]): NewUseCase[] => raw.map((uc: any) => ({
+    id: uc.id || generateId(),
+    domain: uc.domain || '',
+    name: uc.name || '',
+    steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
+    onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
+    liveMonth: uc.liveMonth || uc.live_month || 6,
+    rampType: (uc.rampType || uc.ramp_type || 'linear') as RampType,
+    scenarios: uc.scenarios || [true, false, false],
+    cloud: uc.cloud || 'azure',
+    assumptions: uc.assumptions || '',
+    skuBreakdown: (uc.skuBreakdown || uc.sku_breakdown || []).map((s: any) => ({
+      sku: s.sku || '',
+      percentage: s.percentage || 0,
+      dbus: s.dbus || 0,
+      dollarDbu: s.dollarDbu || s.dollar_dbu || 0,
+    })),
+  }));
+
+  // Full load: use cases + consumption baseline. Called when account/sheetUrl changes.
+  const loadFull = async () => {
     setLoading(true);
     try {
+      // Load the current scenario's use cases (each scenario maintains its own list)
       const data = await fetchScenario(account, scenario);
       setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
       setAssumptionsText(data.assumptions_text || '');
-      // Restore use cases with proper types
-      const savedUCs = (data.new_use_cases || []).map((uc: any) => ({
-        id: uc.id || generateId(),
-        domain: uc.domain || '',
-        name: uc.name || '',
-        steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
-        onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
-        liveMonth: uc.liveMonth || uc.live_month || 6,
-        rampType: (uc.rampType || uc.ramp_type || 'linear') as RampType,
-        scenarios: uc.scenarios || [true, false, false],
-        cloud: uc.cloud || 'azure',
-        assumptions: uc.assumptions || '',
-        skuBreakdown: (uc.skuBreakdown || uc.sku_breakdown || []).map((s: any) => ({
-          sku: s.sku || '',
-          percentage: s.percentage || 0,
-          dbus: s.dbus || 0,
-          dollarDbu: s.dollarDbu || s.dollar_dbu || 0,
-        })),
-      }));
-      setNewUseCases(savedUCs);
+      setNewUseCases(parseUCs(data.new_use_cases || []));
+      setIsDirty(false);
 
       // Load historical consumption as baseline
       let mapping: Record<string, string> = {};
@@ -230,10 +252,8 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
           (mapRes.mapping || []).forEach((r: any) => { mapping[r.workspace] = r.domain; });
         } catch (e) { console.warn('Mapping error:', e); }
       }
-
       const consumption = await fetchConsumption(account);
       const consumptionData = consumption.data || [];
-
       const domainMonthly: Record<string, Record<string, number>> = {};
       consumptionData.forEach((row: any) => {
         const ws = row.workspace_name || '';
@@ -243,7 +263,6 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
         if (!domainMonthly[domain]) domainMonthly[domain] = {};
         domainMonthly[domain][month] = (domainMonthly[domain][month] || 0) + dbu;
       });
-
       const baselines: DomainBaseline[] = Object.entries(domainMonthly)
         .map(([domain, monthData]) => {
           const months = Object.keys(monthData).sort();
@@ -253,7 +272,6 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
           return { domain, monthlyActuals: monthData, t12m, t3m, avgMonthly: t12m / Math.max(months.length, 1) };
         })
         .sort((a, b) => b.t12m - a.t12m);
-
       setDomainBaselines(baselines);
       setDomains(baselines.map(b => b.domain));
     } catch (e) {
@@ -263,26 +281,50 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
     }
   };
 
-  useEffect(() => { loadScenario(); }, [account, scenario, sheetUrl]);
+  // Scenario-only switch: reload growth rate + assumptions for the new scenario,
+  // but KEEP current use cases in memory (they are shared across scenarios).
+  const loadScenarioSettings = async (s: number, currentUCs: NewUseCase[]) => {
+    try {
+      const data = await fetchScenario(account, s);
+      setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
+      setAssumptionsText(data.assumptions_text || '');
+      // If the new scenario has no use cases saved yet, propagate current ones to it
+      if ((data.new_use_cases || []).length === 0 && currentUCs.length > 0) {
+        await saveScenario({ scenario_id: s, account, baseline_growth_rate: (data.baseline_growth_rate || 0.02), assumptions_text: data.assumptions_text || '', new_use_cases: currentUCs });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => { loadFull(); }, [account, sheetUrl]);
+
+  const handleScenarioSwitch = async (s: number) => {
+    if (s === scenario) return;
+    // Auto-save current use cases before switching — skip if still loading to avoid wiping data
+    if (!loading) {
+      await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases });
+    }
+    setScenario(s);
+    await loadScenarioSettings(s, newUseCases);
+    setIsDirty(false);
+  };
 
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
     try {
-      await saveScenario({
-        scenario_id: scenario,
-        account,
-        baseline_growth_rate: baselineGrowthRate / 100,
-        assumptions_text: assumptionsText,
-        new_use_cases: newUseCases,
-      });
+      // Each scenario maintains its own independent use case list
+      await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases });
       setSaved(true);
+      setIsDirty(false);
       setTimeout(() => setSaved(false), 3000);
     } catch (e) { console.error(e); }
     finally { setSaving(false); }
   };
 
   const addNewUseCase = () => {
+    setIsDirty(true);
     setNewUseCases([...newUseCases, {
       id: generateId(),
       domain: domains[0] || '',
@@ -298,9 +340,10 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
     }]);
   };
 
-  const removeNewUseCase = (id: string) => setNewUseCases(newUseCases.filter(uc => uc.id !== id));
+  const removeNewUseCase = (id: string) => { setIsDirty(true); setNewUseCases(newUseCases.filter(uc => uc.id !== id)); };
 
   const updateUC = (id: string, updates: Partial<NewUseCase>) => {
+    setIsDirty(true);
     setNewUseCases(prev => prev.map(uc => {
       if (uc.id !== id) return uc;
       const updated = { ...uc, ...updates };
@@ -401,7 +444,7 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
           {[1, 2, 3].map((s) => (
-            <button key={s} onClick={() => setScenario(s)}
+            <button key={s} onClick={() => handleScenarioSwitch(s)}
               className={`px-4 py-2 rounded-md text-sm font-medium ${
                 scenario === s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}>
@@ -417,6 +460,19 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
           </button>
         </div>
       </div>
+
+      {isDirty && !saving && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-800 text-sm">
+          <svg className="w-4 h-4 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <span>You have unsaved changes. <strong>Save Scenario</strong> before switching to Consumption Forecast — the forecast table is built from the last saved state.</span>
+          <button onClick={handleSave} disabled={saving}
+            className="ml-auto flex-shrink-0 px-3 py-1 bg-amber-500 text-white rounded text-xs font-semibold hover:bg-amber-600">
+            Save Now
+          </button>
+        </div>
+      )}
 
       {loading && <div className="text-center py-8 text-gray-500">Loading historical baseline + scenario...</div>}
 
@@ -490,7 +546,7 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">Baseline Growth Rate (Applied to All Historical Consumption)</h3>
                 <div className="flex items-center gap-3">
                   <input type="number" step="0.5" value={baselineGrowthRate}
-                    onChange={(e) => setBaselineGrowthRate(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => { setIsDirty(true); setBaselineGrowthRate(parseFloat(e.target.value) || 0); }}
                     className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-right" />
                   <span className="text-sm text-gray-500">% MoM</span>
                   <span className="text-xs text-gray-400">
@@ -500,376 +556,11 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">Assumptions</h3>
-                <textarea value={assumptionsText} onChange={(e) => setAssumptionsText(e.target.value)} rows={4}
+                <textarea value={assumptionsText} onChange={(e) => { setIsDirty(true); setAssumptionsText(e.target.value); }} rows={4}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
                   placeholder="e.g., 2% MoM organic growth from data volume increase, new workloads ramping Q2..." />
               </div>
             </div>
-          </div>
-
-          {/* New Use Cases */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="text-sm font-semibold text-gray-700">
-                New Use Cases ({activeUseCases.length} active in Scenario {scenario}, {newUseCases.length} total)
-              </h3>
-              <button onClick={addNewUseCase} className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
-                + Add Use Case
-              </button>
-            </div>
-
-            {newUseCases.length === 0 ? (
-              <div className="p-6 text-center text-sm text-gray-400">No use cases added yet. Click "+ Add Use Case" to project incremental workloads.</div>
-            ) : (
-              <div className="divide-y">
-                {newUseCases.map((uc) => {
-                  const isActive = uc.scenarios[scenario - 1];
-                  const isExpanded = expandedUC === uc.id;
-                  const ucMonthly = calcUseCaseMonthly(uc);
-                  const ucYearTotals = [0, 0, 0];
-                  ucMonthly.forEach((v, i) => { ucYearTotals[Math.floor(i / 12)] += v; });
-
-                  return (
-                    <div key={uc.id} className={`${isActive ? '' : 'opacity-50'}`}>
-                      {/* Use Case Header */}
-                      <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                        onClick={() => setExpandedUC(isExpanded ? null : uc.id)}>
-                        <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
-                          fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{uc.name || 'Unnamed Use Case'}</span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{uc.domain}</span>
-                            {uc.cloud && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{uc.cloud}</span>}
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                              uc.rampType === 'hockey_stick' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                            }`}>{uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'} ramp</span>
-                            {uc.scenarios.map((on, i) => on && (
-                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">S{i + 1}</span>
-                            ))}
-                          </div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            {formatCurrency(uc.steadyStateDbu)}/mo steady state | Onboard M{uc.onboardingMonth} {'>'} Live M{uc.liveMonth} |
-                            Y1: {formatCurrency(ucYearTotals[0])} | Y2: {formatCurrency(ucYearTotals[1])} | Y3: {formatCurrency(ucYearTotals[2])}
-                            {uc.skuBreakdown.length > 0 && ` | ${uc.skuBreakdown.length} SKUs`}
-                          </div>
-                        </div>
-                        <button onClick={(e) => { e.stopPropagation(); removeNewUseCase(uc.id); }}
-                          className="text-red-400 hover:text-red-600 text-xs flex-shrink-0">Remove</button>
-                      </div>
-
-                      {/* Expanded Form */}
-                      {isExpanded && (
-                        <div className="px-4 pb-4 pt-0 ml-8 space-y-4">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Use Case Name</label>
-                              <input value={uc.name} onChange={(e) => updateUC(uc.id, { name: e.target.value })}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="e.g., Informatica Migration" />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Domain</label>
-                              <select value={uc.domain} onChange={(e) => updateUC(uc.id, { domain: e.target.value })}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                                {domains.map(d => <option key={d} value={d}>{d}</option>)}
-                              </select>
-                            </div>
-                            <div className="col-span-2 md:col-span-4">
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Steady-State Size</label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {TSHIRT_SIZES.map((size) => {
-                                  const isSelected = getTshirtKey(uc.steadyStateDbu) === size.key;
-                                  return (
-                                    <button key={size.key}
-                                      onClick={() => updateUC(uc.id, { steadyStateDbu: size.value })}
-                                      className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-center transition-all min-w-[72px] ${
-                                        isSelected
-                                          ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-200'
-                                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                      }`}>
-                                      <span className={`text-xs font-bold ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>{size.label}</span>
-                                      <span className={`text-[10px] font-medium ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>{fmtShort(size.value)}/mo</span>
-                                      <span className={`text-[9px] ${isSelected ? 'text-blue-400' : 'text-gray-400'}`}>{fmtShort(size.value * 12)}/yr</span>
-                                    </button>
-                                  );
-                                })}
-                                {/* Custom option */}
-                                <button
-                                  onClick={() => {
-                                    if (getTshirtKey(uc.steadyStateDbu) !== 'custom') updateUC(uc.id, { steadyStateDbu: 0 });
-                                  }}
-                                  className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-center transition-all min-w-[72px] ${
-                                    getTshirtKey(uc.steadyStateDbu) === 'custom'
-                                      ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-200'
-                                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                  }`}>
-                                  <span className={`text-xs font-bold ${getTshirtKey(uc.steadyStateDbu) === 'custom' ? 'text-purple-700' : 'text-gray-700'}`}>Custom</span>
-                                  <span className={`text-[10px] ${getTshirtKey(uc.steadyStateDbu) === 'custom' ? 'text-purple-500' : 'text-gray-400'}`}>Enter value</span>
-                                </button>
-                              </div>
-                              {/* Custom value input or selected summary */}
-                              <div className="mt-2 flex items-center gap-3">
-                                {getTshirtKey(uc.steadyStateDbu) === 'custom' ? (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-gray-500">$</span>
-                                    <input type="number" value={uc.steadyStateDbu || ''}
-                                      onChange={(e) => updateUC(uc.id, { steadyStateDbu: parseFloat(e.target.value) || 0 })}
-                                      className="w-32 border border-purple-300 rounded px-2 py-1 text-sm text-right bg-purple-50"
-                                      placeholder="Enter $/month" />
-                                    <span className="text-xs text-gray-500">/month</span>
-                                    {uc.steadyStateDbu > 0 && (
-                                      <span className="text-xs text-gray-400">= {fmtShort(uc.steadyStateDbu * 12)}/yr</span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="text-xs text-gray-500">
-                                    {formatCurrency(uc.steadyStateDbu)}/month {'>'} {fmtShort(uc.steadyStateDbu * 12)}/year
-                                    <span className="text-gray-400 ml-2">
-                                      ({TSHIRT_SIZES.find(s => s.value === uc.steadyStateDbu)?.desc})
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Ramp Pattern</label>
-                              <div className="flex gap-2 mt-1">
-                                <button onClick={() => updateUC(uc.id, { rampType: 'linear' })}
-                                  className={`flex-1 px-2 py-1.5 text-xs rounded border ${
-                                    uc.rampType === 'linear' ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium' : 'border-gray-200 text-gray-500'
-                                  }`}>Linear</button>
-                                <button onClick={() => updateUC(uc.id, { rampType: 'hockey_stick' })}
-                                  className={`flex-1 px-2 py-1.5 text-xs rounded border ${
-                                    uc.rampType === 'hockey_stick' ? 'bg-orange-50 border-orange-300 text-orange-700 font-medium' : 'border-gray-200 text-gray-500'
-                                  }`}>Hockey Stick</button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Onboarding Month</label>
-                              <select value={uc.onboardingMonth} onChange={(e) => updateUC(uc.id, { onboardingMonth: parseInt(e.target.value) })}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                                {Array.from({ length: 36 }, (_, i) => (
-                                  <option key={i + 1} value={i + 1}>Month {i + 1} (Y{Math.floor(i / 12) + 1})</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Live Month (Steady State)</label>
-                              <select value={uc.liveMonth} onChange={(e) => updateUC(uc.id, { liveMonth: parseInt(e.target.value) })}
-                                className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                                {Array.from({ length: 36 }, (_, i) => (
-                                  <option key={i + 1} value={i + 1} disabled={i + 1 <= uc.onboardingMonth}>
-                                    Month {i + 1} (Y{Math.floor(i / 12) + 1})
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="col-span-2">
-                              <label className="block text-xs font-medium text-gray-600 mb-1">Include in Scenarios</label>
-                              <div className="flex gap-4 mt-1">
-                                {[0, 1, 2].map(i => (
-                                  <label key={i} className="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" checked={uc.scenarios[i]}
-                                      onChange={(e) => {
-                                        const s = [...uc.scenarios];
-                                        s[i] = e.target.checked;
-                                        updateUC(uc.id, { scenarios: s });
-                                      }}
-                                      className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded" />
-                                    <span className="text-xs text-gray-600">Scenario {i + 1}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Cloud Selector */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Cloud</label>
-                            <div className="flex gap-2">
-                              {availableClouds.map(c => (
-                                <button key={c} onClick={() => updateUC(uc.id, { cloud: c })}
-                                  className={`px-3 py-1.5 text-xs rounded border capitalize ${
-                                    uc.cloud === c
-                                      ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-medium ring-1 ring-indigo-200'
-                                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                                  }`}>
-                                  {c.toUpperCase()}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Workload Type Presets */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Workload Type</label>
-                            <div className="flex flex-wrap gap-1.5">
-                              {WORKLOAD_PRESETS.map(preset => (
-                                <button key={preset.key}
-                                  onClick={() => applyWorkloadPreset(uc.id, preset.key)}
-                                  className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                                  {preset.label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* SKU Breakdown Table */}
-                          {uc.skuBreakdown.length > 0 && (
-                            <div className="border rounded-lg overflow-hidden">
-                              <table className="w-full text-xs">
-                                <thead>
-                                  <tr className="bg-gray-50">
-                                    <th className="px-3 py-2 text-left font-medium text-gray-600">SKU</th>
-                                    <th className="px-3 py-2 text-right font-medium text-gray-600 w-20">% Split</th>
-                                    <th className="px-3 py-2 text-right font-medium text-gray-600">DBUs/month</th>
-                                    <th className="px-3 py-2 text-right font-medium text-gray-600">$/DBU (list)</th>
-                                    <th className="px-3 py-2 text-right font-medium text-gray-600">$/month</th>
-                                    <th className="px-3 py-2 w-8"></th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {uc.skuBreakdown.map((alloc, idx) => {
-                                    const price = skuPriceMap[alloc.sku]?.[uc.cloud] || 0;
-                                    return (
-                                      <tr key={idx} className="border-t hover:bg-gray-50">
-                                        <td className="px-3 py-1.5">
-                                          <select value={alloc.sku}
-                                            onChange={(e) => updateSkuRow(uc.id, idx, 'sku', e.target.value)}
-                                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs">
-                                            {availableSkuNames.length > 0
-                                              ? availableSkuNames.map(name => (
-                                                  <option key={name} value={name}>{name}</option>
-                                                ))
-                                              : /* Fallback: show common SKU names when price data not loaded */
-                                                ['All Purpose Compute', 'All Purpose Compute (Photon)', 'Jobs Compute',
-                                                 'Jobs Compute (Photon)', 'Serverless Jobs', 'SQL Warehouse',
-                                                 'Serverless SQL', 'DLT Core', 'DLT Core (Photon)', 'DLT Advanced',
-                                                 'DLT Advanced (Photon)', 'DLT Pro', 'Model Serving',
-                                                 'Serverless Inference', 'Foundation Model API', 'Vector Search',
-                                                ].map(name => (
-                                                  <option key={name} value={name}>{name}</option>
-                                                ))
-                                            }
-                                          </select>
-                                        </td>
-                                        <td className="px-3 py-1.5 text-right">
-                                          <div className="flex items-center justify-end gap-1">
-                                            <input type="number" min={0} max={100} value={alloc.percentage}
-                                              onChange={(e) => updateSkuRow(uc.id, idx, 'percentage', parseFloat(e.target.value) || 0)}
-                                              className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-right" />
-                                            <span className="text-gray-400">%</span>
-                                          </div>
-                                        </td>
-                                        <td className="px-3 py-1.5 text-right text-gray-700">
-                                          {alloc.dbus > 0 ? Math.round(alloc.dbus).toLocaleString() : '-'}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-right text-gray-500">
-                                          {price > 0 ? `$${price.toFixed(2)}` : '-'}
-                                        </td>
-                                        <td className="px-3 py-1.5 text-right font-medium text-gray-900">
-                                          {alloc.dollarDbu > 0 ? formatCurrency(alloc.dollarDbu) : '-'}
-                                        </td>
-                                        <td className="px-1 py-1.5 text-center">
-                                          <button onClick={() => removeSkuRow(uc.id, idx)}
-                                            className="text-red-300 hover:text-red-500 text-[10px]">x</button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                  {/* Total row */}
-                                  <tr className="border-t-2 border-gray-300 bg-gray-50 font-medium">
-                                    <td className="px-3 py-2 text-gray-700">Total</td>
-                                    <td className="px-3 py-2 text-right">
-                                      <span className={uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0) === 100
-                                        ? 'text-green-600' : 'text-red-500'}>
-                                        {uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0)}%
-                                      </span>
-                                    </td>
-                                    <td className="px-3 py-2 text-right text-gray-700">
-                                      {Math.round(uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)).toLocaleString()}
-                                    </td>
-                                    <td className="px-3 py-2 text-right text-gray-500">
-                                      {(() => {
-                                        const totalDollar = uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
-                                        const totalDbus = uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
-                                        const avg = totalDbus > 0 ? totalDollar / totalDbus : 0;
-                                        return avg > 0 ? `avg $${avg.toFixed(2)}` : '-';
-                                      })()}
-                                    </td>
-                                    <td className="px-3 py-2 text-right font-bold text-gray-900">
-                                      {formatCurrency(uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0))}
-                                    </td>
-                                    <td></td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-
-                          <button onClick={() => addSkuRow(uc.id)}
-                            className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                            + Add SKU Row
-                          </button>
-
-                          {/* Per-use-case Assumptions */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1">Use Case Assumptions</label>
-                            <textarea value={uc.assumptions || ''}
-                              onChange={(e) => updateUC(uc.id, { assumptions: e.target.value })}
-                              rows={2}
-                              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                              placeholder="e.g., Migrating 50 Informatica jobs, expected 10TB daily ingestion..." />
-                          </div>
-
-                          {/* Ramp Preview */}
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <div className="text-[10px] font-medium text-gray-500 uppercase mb-2">Monthly Ramp Preview</div>
-                            <div className="flex items-end gap-px h-16">
-                              {ucMonthly.slice(0, 36).map((v, i) => {
-                                const maxVal = Math.max(...ucMonthly, 1);
-                                const pct = (v / maxVal) * 100;
-                                const isOnboard = i + 1 === uc.onboardingMonth;
-                                const isLive = i + 1 === uc.liveMonth;
-                                return (
-                                  <div key={i} className="flex-1 flex flex-col items-center" title={`M${i + 1}: ${formatCurrency(v)}`}>
-                                    <div
-                                      className={`w-full rounded-t-sm ${
-                                        v === 0 ? 'bg-gray-200' :
-                                        i + 1 >= uc.liveMonth ? 'bg-green-400' :
-                                        uc.rampType === 'hockey_stick' ? 'bg-orange-400' : 'bg-blue-400'
-                                      }`}
-                                      style={{ height: `${Math.max(pct, 2)}%` }}
-                                    />
-                                    {(isOnboard || isLive || (i + 1) % 6 === 1) && (
-                                      <span className={`text-[7px] mt-0.5 ${isOnboard || isLive ? 'font-bold text-gray-700' : 'text-gray-400'}`}>
-                                        {isOnboard ? '^' : isLive ? 'o' : `M${i + 1}`}
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div className="flex justify-between text-[9px] text-gray-400 mt-1">
-                              <span>^ Onboard (M{uc.onboardingMonth})</span>
-                              <span>o Live (M{uc.liveMonth}): {formatCurrency(uc.steadyStateDbu)}/mo</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
           {/* Projection Summary */}
@@ -921,6 +612,360 @@ function ScenarioAccountView({ account, sheetUrl }: InnerProps) {
           </div>
         </>
       )}
+
+      {/* Use Cases — independent panel, shared across S1/S2/S3 */}
+      <div className="rounded-xl border-2 border-blue-200 shadow-sm mt-6 overflow-hidden">
+        {/* Panel header */}
+        <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500">
+          <div className="flex items-center gap-3">
+            <span className="text-white font-bold text-sm tracking-wide">Use Cases</span>
+            <span className="bg-white/20 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
+              {newUseCases.length} total
+            </span>
+            {newUseCases.length > 0 && (
+              <div className="flex items-center gap-2 text-blue-100 text-xs">
+                <span className="bg-white/10 px-1.5 py-0.5 rounded">S1: {newUseCases.filter(u => u.scenarios[0]).length}</span>
+                <span className="bg-white/10 px-1.5 py-0.5 rounded">S2: {newUseCases.filter(u => u.scenarios[1]).length}</span>
+                <span className="bg-white/10 px-1.5 py-0.5 rounded">S3: {newUseCases.filter(u => u.scenarios[2]).length}</span>
+              </div>
+            )}
+          </div>
+          <button onClick={addNewUseCase}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-50 transition shadow-sm">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Use Case
+          </button>
+        </div>
+
+        {newUseCases.length === 0 ? (
+          <div className="p-8 text-center bg-white">
+            <div className="text-gray-300 mb-2">
+              <svg className="w-10 h-10 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-400">No use cases added yet.</p>
+            <p className="text-xs text-gray-300 mt-1">Click <strong className="text-blue-500">Add Use Case</strong> to project incremental workloads.</p>
+          </div>
+        ) : (
+          <div className="bg-white divide-y divide-gray-100">
+            {newUseCases.map((uc, ucIdx) => {
+              const UC_COLORS = [
+                { border: 'border-l-blue-500',   bg: 'bg-blue-50',   badge: 'bg-blue-500',   text: 'text-blue-700',   light: 'bg-blue-50',   ring: 'ring-blue-200'   },
+                { border: 'border-l-violet-500',  bg: 'bg-violet-50', badge: 'bg-violet-500', text: 'text-violet-700', light: 'bg-violet-50', ring: 'ring-violet-200' },
+                { border: 'border-l-emerald-500', bg: 'bg-emerald-50',badge: 'bg-emerald-500',text: 'text-emerald-700',light: 'bg-emerald-50',ring: 'ring-emerald-200'},
+                { border: 'border-l-orange-500',  bg: 'bg-orange-50', badge: 'bg-orange-500', text: 'text-orange-700', light: 'bg-orange-50', ring: 'ring-orange-200' },
+                { border: 'border-l-rose-500',    bg: 'bg-rose-50',   badge: 'bg-rose-500',   text: 'text-rose-700',  light: 'bg-rose-50',   ring: 'ring-rose-200'   },
+                { border: 'border-l-cyan-500',    bg: 'bg-cyan-50',   badge: 'bg-cyan-500',   text: 'text-cyan-700',  light: 'bg-cyan-50',   ring: 'ring-cyan-200'   },
+                { border: 'border-l-teal-500',    bg: 'bg-teal-50',   badge: 'bg-teal-500',   text: 'text-teal-700',  light: 'bg-teal-50',   ring: 'ring-teal-200'   },
+              ];
+              const ucColor = UC_COLORS[ucIdx % UC_COLORS.length];
+              const isExpanded = expandedUC === uc.id;
+              const ucMonthly = calcUseCaseMonthly(uc);
+              const ucYearTotals = [0, 0, 0];
+              ucMonthly.forEach((v, i) => { ucYearTotals[Math.floor(i / 12)] += v; });
+              return (
+                <div key={uc.id} className={`border-l-4 ${ucColor.border}`}>
+                  {/* Header row */}
+                  <div className={`flex items-center gap-3 px-4 py-3 ${isExpanded ? ucColor.bg : 'bg-white hover:' + ucColor.bg} transition-colors`}>
+                    <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                      onClick={() => setExpandedUC(isExpanded ? null : uc.id)}>
+                      {/* UC number badge */}
+                      <span className={`flex-shrink-0 w-6 h-6 rounded-full ${ucColor.badge} text-white text-[10px] font-bold flex items-center justify-center`}>
+                        {ucIdx + 1}
+                      </span>
+                      <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-sm font-semibold ${ucColor.text}`}>{uc.name || 'Unnamed Use Case'}</span>
+                          {uc.domain && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{uc.domain}</span>}
+                          {uc.cloud && <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">{uc.cloud.toUpperCase()}</span>}
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${uc.rampType === 'hockey_stick' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'} ramp
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {formatCurrency(uc.steadyStateDbu)}/mo &nbsp;·&nbsp;
+                          <span className="text-amber-600 font-medium">Onboard: {getMonthLabel(uc.onboardingMonth, contractStartDate)}</span>
+                          &nbsp;→&nbsp;
+                          <span className="text-green-600 font-medium">Live: {getMonthLabel(uc.liveMonth, contractStartDate)}</span>
+                          &nbsp;·&nbsp; Y1: {formatCurrency(ucYearTotals[0])} &nbsp;·&nbsp; Y2: {formatCurrency(ucYearTotals[1])} &nbsp;·&nbsp; Y3: {formatCurrency(ucYearTotals[2])}
+                        </div>
+                      </div>
+                    </div>
+                    {/* S1/S2/S3 inline checkboxes */}
+                    <div className="flex items-center gap-2 flex-shrink-0 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+                      {[0, 1, 2].map(i => (
+                        <label key={i} className="flex items-center gap-1 cursor-pointer">
+                          <input type="checkbox" checked={uc.scenarios[i]}
+                            onChange={(e) => {
+                              const s = [...uc.scenarios];
+                              s[i] = e.target.checked;
+                              updateUC(uc.id, { scenarios: s });
+                            }}
+                            className="w-3.5 h-3.5 rounded" />
+                          <span className={`text-xs font-semibold ${uc.scenarios[i] ? ['text-blue-600','text-violet-600','text-emerald-600'][i] : 'text-gray-300'}`}>S{i + 1}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button onClick={() => removeNewUseCase(uc.id)}
+                      className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0" title="Remove">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Expanded Form */}
+                  {isExpanded && (
+                    <div className={`px-5 pb-5 pt-3 ml-10 space-y-4 border-t border-dashed ${ucColor.ring.replace('ring','border')}`}>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Use Case Name</label>
+                          <input value={uc.name} onChange={(e) => updateUC(uc.id, { name: e.target.value })}
+                            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm" placeholder="e.g., Informatica Migration" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Domain</label>
+                          <select value={uc.domain} onChange={(e) => updateUC(uc.id, { domain: e.target.value })}
+                            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                            {domains.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </div>
+                        <div className="col-span-2 md:col-span-4">
+                          <label className="block text-xs font-medium text-gray-600 mb-1.5">Steady-State Size</label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {TSHIRT_SIZES.map((size) => {
+                              const isSelected = getTshirtKey(uc.steadyStateDbu) === size.key;
+                              return (
+                                <button key={size.key} onClick={() => updateUC(uc.id, { steadyStateDbu: size.value })}
+                                  className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-center transition-all min-w-[72px] ${isSelected ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-200' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+                                  <span className={`text-xs font-bold ${isSelected ? 'text-blue-700' : 'text-gray-700'}`}>{size.label}</span>
+                                  <span className={`text-[10px] font-medium ${isSelected ? 'text-blue-600' : 'text-gray-500'}`}>{fmtShort(size.value)}/mo</span>
+                                  <span className={`text-[9px] ${isSelected ? 'text-blue-400' : 'text-gray-400'}`}>{fmtShort(size.value * 12)}/yr</span>
+                                </button>
+                              );
+                            })}
+                            <button onClick={() => { if (getTshirtKey(uc.steadyStateDbu) !== 'custom') updateUC(uc.id, { steadyStateDbu: 0 }); }}
+                              className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-center transition-all min-w-[72px] ${getTshirtKey(uc.steadyStateDbu) === 'custom' ? 'bg-purple-50 border-purple-400 ring-1 ring-purple-200' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}>
+                              <span className={`text-xs font-bold ${getTshirtKey(uc.steadyStateDbu) === 'custom' ? 'text-purple-700' : 'text-gray-700'}`}>Custom</span>
+                              <span className={`text-[10px] ${getTshirtKey(uc.steadyStateDbu) === 'custom' ? 'text-purple-500' : 'text-gray-400'}`}>Enter value</span>
+                            </button>
+                          </div>
+                          <div className="mt-2 flex items-center gap-3">
+                            {getTshirtKey(uc.steadyStateDbu) === 'custom' ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">$</span>
+                                <input type="number" value={uc.steadyStateDbu || ''}
+                                  onChange={(e) => updateUC(uc.id, { steadyStateDbu: parseFloat(e.target.value) || 0 })}
+                                  className="w-32 border border-purple-300 rounded px-2 py-1 text-sm text-right bg-purple-50" placeholder="Enter $/month" />
+                                <span className="text-xs text-gray-500">/month</span>
+                                {uc.steadyStateDbu > 0 && <span className="text-xs text-gray-400">= {fmtShort(uc.steadyStateDbu * 12)}/yr</span>}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-500">
+                                {formatCurrency(uc.steadyStateDbu)}/month {'>'} {fmtShort(uc.steadyStateDbu * 12)}/year
+                                <span className="text-gray-400 ml-2">({TSHIRT_SIZES.find(s => s.value === uc.steadyStateDbu)?.desc})</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Ramp Pattern</label>
+                          <div className="flex gap-2 mt-1">
+                            <button onClick={() => updateUC(uc.id, { rampType: 'linear' })}
+                              className={`flex-1 px-2 py-1.5 text-xs rounded border ${uc.rampType === 'linear' ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium' : 'border-gray-200 text-gray-500'}`}>Linear</button>
+                            <button onClick={() => updateUC(uc.id, { rampType: 'hockey_stick' })}
+                              className={`flex-1 px-2 py-1.5 text-xs rounded border ${uc.rampType === 'hockey_stick' ? 'bg-orange-50 border-orange-300 text-orange-700 font-medium' : 'border-gray-200 text-gray-500'}`}>Hockey Stick</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Onboarding Month</label>
+                          <select value={uc.onboardingMonth} onChange={(e) => updateUC(uc.id, { onboardingMonth: parseInt(e.target.value) })}
+                            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                            {Array.from({ length: 36 }, (_, i) => (
+                              <option key={i + 1} value={i + 1}>{getMonthLabel(i + 1, contractStartDate)}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Live Month (Steady State)</label>
+                          <select value={uc.liveMonth} onChange={(e) => updateUC(uc.id, { liveMonth: parseInt(e.target.value) })}
+                            className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
+                            {Array.from({ length: 36 }, (_, i) => (
+                              <option key={i + 1} value={i + 1} disabled={i + 1 <= uc.onboardingMonth}>
+                                {getMonthLabel(i + 1, contractStartDate)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Include in Scenarios</label>
+                          <div className="flex gap-4 mt-1">
+                            {[0, 1, 2].map(i => (
+                              <label key={i} className="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" checked={uc.scenarios[i]}
+                                  onChange={(e) => {
+                                    const s = [...uc.scenarios];
+                                    s[i] = e.target.checked;
+                                    updateUC(uc.id, { scenarios: s });
+                                  }}
+                                  className="w-3.5 h-3.5 text-blue-600 border-gray-300 rounded" />
+                                <span className="text-xs text-gray-600">Scenario {i + 1}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Cloud</label>
+                        <div className="flex gap-2">
+                          {availableClouds.map(c => (
+                            <button key={c} onClick={() => updateUC(uc.id, { cloud: c })}
+                              className={`px-3 py-1.5 text-xs rounded border capitalize ${uc.cloud === c ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-medium ring-1 ring-indigo-200' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                              {c.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Workload Type</label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {WORKLOAD_PRESETS.map(preset => (
+                            <button key={preset.key} onClick={() => applyWorkloadPreset(uc.id, preset.key)}
+                              className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors">
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {uc.skuBreakdown.length > 0 && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-gray-50">
+                                <th className="px-3 py-2 text-left font-medium text-gray-600">SKU</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-600 w-20">% Split</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-600">DBUs/month</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-600">$/DBU (list)</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-600">$/month</th>
+                                <th className="px-3 py-2 w-8"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {uc.skuBreakdown.map((alloc, idx) => {
+                                const price = skuPriceMap[alloc.sku]?.[uc.cloud] || 0;
+                                return (
+                                  <tr key={idx} className="border-t hover:bg-gray-50">
+                                    <td className="px-3 py-1.5">
+                                      <select value={alloc.sku} onChange={(e) => updateSkuRow(uc.id, idx, 'sku', e.target.value)}
+                                        className="w-full border border-gray-200 rounded px-1.5 py-1 text-xs">
+                                        {availableSkuNames.length > 0
+                                          ? availableSkuNames.map(name => <option key={name} value={name}>{name}</option>)
+                                          : ['All Purpose Compute', 'Jobs Compute', 'Serverless SQL', 'DLT Core', 'Model Serving', 'Foundation Model API', 'Vector Search'].map(name => <option key={name} value={name}>{name}</option>)
+                                        }
+                                      </select>
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <input type="number" min={0} max={100} value={alloc.percentage}
+                                          onChange={(e) => updateSkuRow(uc.id, idx, 'percentage', parseFloat(e.target.value) || 0)}
+                                          className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs text-right" />
+                                        <span className="text-gray-400">%</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-1.5 text-right text-gray-700">{alloc.dbus > 0 ? Math.round(alloc.dbus).toLocaleString() : '-'}</td>
+                                    <td className="px-3 py-1.5 text-right text-gray-500">{price > 0 ? `$${price.toFixed(2)}` : '-'}</td>
+                                    <td className="px-3 py-1.5 text-right font-medium text-gray-900">{alloc.dollarDbu > 0 ? formatCurrency(alloc.dollarDbu) : '-'}</td>
+                                    <td className="px-1 py-1.5 text-center">
+                                      <button onClick={() => removeSkuRow(uc.id, idx)} className="text-red-300 hover:text-red-500 text-[10px]">x</button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              <tr className="border-t-2 border-gray-300 bg-gray-50 font-medium">
+                                <td className="px-3 py-2 text-gray-700">Total</td>
+                                <td className="px-3 py-2 text-right">
+                                  <span className={uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0) === 100 ? 'text-green-600' : 'text-red-500'}>
+                                    {uc.skuBreakdown.reduce((s, a) => s + a.percentage, 0)}%
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-right text-gray-700">{Math.round(uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right text-gray-500">
+                                  {(() => {
+                                    const td = uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
+                                    const tdb = uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
+                                    const avg = tdb > 0 ? td / tdb : 0;
+                                    return avg > 0 ? `avg $${avg.toFixed(2)}` : '-';
+                                  })()}
+                                </td>
+                                <td className="px-3 py-2 text-right font-bold text-gray-900">{formatCurrency(uc.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0))}</td>
+                                <td></td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <button onClick={() => addSkuRow(uc.id)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+                        + Add SKU Row
+                      </button>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Use Case Assumptions</label>
+                        <textarea value={uc.assumptions || ''} onChange={(e) => updateUC(uc.id, { assumptions: e.target.value })}
+                          rows={2} className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                          placeholder="e.g., Migrating 50 Informatica jobs, expected 10TB daily ingestion..." />
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="text-[10px] font-medium text-gray-500 uppercase mb-2">Monthly Ramp Preview</div>
+                        <div className="flex items-end gap-px h-16">
+                          {ucMonthly.slice(0, 36).map((v, i) => {
+                            const maxVal = Math.max(...ucMonthly, 1);
+                            const pct = (v / maxVal) * 100;
+                            const isOnboard = i + 1 === uc.onboardingMonth;
+                            const isLive = i + 1 === uc.liveMonth;
+                            return (
+                              <div key={i} className="flex-1 flex flex-col items-center" title={`${getMonthLabel(i + 1, contractStartDate)}: ${formatCurrency(v)}`}>
+                                <div className={`w-full rounded-t-sm ${v === 0 ? 'bg-gray-200' : i + 1 >= uc.liveMonth ? 'bg-green-400' : uc.rampType === 'hockey_stick' ? 'bg-orange-400' : 'bg-blue-400'}`}
+                                  style={{ height: `${Math.max(pct, 2)}%` }} />
+                                {(isOnboard || isLive || (i + 1) % 6 === 1) && (
+                                  <span className={`text-[7px] mt-0.5 ${isOnboard || isLive ? 'font-bold text-gray-700' : 'text-gray-400'}`}>
+                                    {isOnboard ? '^' : isLive ? 'o' : `M${i + 1}`}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-between text-[9px] text-gray-400 mt-1">
+                          <span>^ Onboard ({getMonthLabel(uc.onboardingMonth, contractStartDate)})</span>
+                          <span>o Live ({getMonthLabel(uc.liveMonth, contractStartDate)}): {formatCurrency(uc.steadyStateDbu)}/mo</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -955,8 +1000,9 @@ export default function ScenarioTab({ accounts }: Props) {
       {accounts.map((acct, i) => (
         <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
           <ScenarioAccountView
-            account={acct.sfdc_id || acct.name}
+            account={acct.sfdc_id}
             sheetUrl={acct.sheetUrl}
+            contractStartDate={acct.contractStartDate}
           />
         </div>
       ))}

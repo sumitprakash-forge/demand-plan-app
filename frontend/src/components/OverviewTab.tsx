@@ -168,7 +168,7 @@ export default function OverviewTab({ accounts }: Props) {
       {accounts.map((acct, i) => (
         <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
           <OverviewAccountView
-            account={acct.sfdc_id || acct.name}
+            account={acct.sfdc_id}
           />
         </div>
       ))}

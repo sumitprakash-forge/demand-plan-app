@@ -611,7 +611,7 @@ export default function HistoricalTab({ accounts }: Props) {
       {accounts.map((acct, i) => (
         <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
           <HistoricalAccountView
-            account={acct.sfdc_id || acct.name}
+            account={acct.sfdc_id}
             sheetUrl={acct.sheetUrl}
           />
         </div>
