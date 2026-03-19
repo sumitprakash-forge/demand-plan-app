@@ -266,19 +266,9 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700">Account Configuration</label>
-            <button
-              onClick={() => {
-                // Force refresh all loaded accounts
-                loadedAccountsRef.current.clear();
-                loadData();
-              }}
-              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700"
-            >
-              Refresh All
-            </button>
           </div>
           {accounts.map((acct, idx) => (
-            <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto_auto] gap-4 items-end">
+            <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_2fr_auto] gap-4 items-end">
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Account Name</label>
                 <input
@@ -293,12 +283,8 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                 <input
                   type="text"
                   value={acct.sheetUrl}
-                  onChange={(e) => {
-                    const updated = [...accounts];
-                    updated[idx] = { ...updated[idx], sheetUrl: e.target.value };
-                    setAccounts(updated);
-                  }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  readOnly
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-50 text-sm"
                   placeholder="Google Sheets URL"
                 />
               </div>
@@ -307,37 +293,10 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                 <input
                   type="month"
                   value={acct.contractStartDate || ''}
-                  onChange={(e) => {
-                    const updated = [...accounts];
-                    updated[idx] = { ...updated[idx], contractStartDate: e.target.value };
-                    setAccounts(updated);
-                  }}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                  readOnly
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-50 text-sm"
                   title="Contract start month — used as M1 of Year 1"
                 />
-              </div>
-              <div className="flex items-end gap-1">
-                {loadedAccountsRef.current.has(acct.name) ? (
-                  <button
-                    onClick={() => loadData(acct.name)}
-                    disabled={loading}
-                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-md text-sm font-medium hover:bg-blue-200 disabled:opacity-50"
-                    title={`Refresh ${acct.name}`}
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => loadData(acct.name)}
-                    disabled={loading || !acct.sfdc_id?.trim()}
-                    className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                    title={`Load data for ${acct.name}`}
-                  >
-                    Load
-                  </button>
-                )}
               </div>
             </div>
           ))}

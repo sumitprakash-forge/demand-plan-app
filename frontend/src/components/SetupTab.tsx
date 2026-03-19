@@ -65,11 +65,14 @@ interface LogfoodAccount {
 interface Props {
   accounts: AccountConfig[];
   setAccounts: (a: AccountConfig[]) => void;
+  onLoadAccount: (acct: AccountConfig) => Promise<void>;
+  loadingAccounts: Record<string, boolean>;
+  loadStatus: Record<string, 'ok' | 'error'>;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function SetupTab({ accounts, setAccounts }: Props) {
+export default function SetupTab({ accounts, setAccounts, onLoadAccount, loadingAccounts, loadStatus }: Props) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -96,6 +99,9 @@ export default function SetupTab({ accounts, setAccounts }: Props) {
         databricksReady={status?.databricks ?? false}
         accounts={accounts}
         setAccounts={setAccounts}
+        onLoadAccount={onLoadAccount}
+        loadingAccounts={loadingAccounts}
+        loadStatus={loadStatus}
       />
     </div>
   );
@@ -437,10 +443,16 @@ function AccountPickerStep({
   databricksReady,
   accounts,
   setAccounts,
+  onLoadAccount,
+  loadingAccounts,
+  loadStatus,
 }: {
   databricksReady: boolean;
   accounts: AccountConfig[];
   setAccounts: (a: AccountConfig[]) => void;
+  onLoadAccount: (acct: AccountConfig) => Promise<void>;
+  loadingAccounts: Record<string, boolean>;
+  loadStatus: Record<string, 'ok' | 'error'>;
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LogfoodAccount[]>([]);
@@ -584,18 +596,81 @@ function AccountPickerStep({
 
             {/* Current accounts */}
             {accounts.some(a => a.name.trim()) && (
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-2">Currently configured accounts</p>
-                <div className="flex flex-wrap gap-2">
-                  {accounts.filter(a => a.name.trim()).map(a => (
-                    <span key={a.sfdc_id} className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 rounded-full text-xs font-medium text-slate-700">
-                      {a.name}
-                      <button
-                        onClick={() => setAccounts(accounts.filter(x => x.sfdc_id !== a.sfdc_id))}
-                        className="text-slate-400 hover:text-red-500"
-                      >×</button>
-                    </span>
-                  ))}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-slate-500">Configured accounts</p>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                  {accounts.filter(a => a.name.trim()).map((acct, idx) => {
+                    const key = acct.sfdc_id;
+                    const isLoading = loadingAccounts[key];
+                    const status = loadStatus[key];
+                    return (
+                      <div key={key} className="p-3 bg-white space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-semibold">{acct.name}</span>
+                            <span className="text-[11px] text-slate-400 font-mono truncate max-w-[180px]">{acct.sfdc_id}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => onLoadAccount(acct)}
+                              disabled={!acct.sfdc_id.trim() || isLoading}
+                              className={`flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border transition-colors disabled:opacity-40 ${
+                                status === 'ok' ? 'bg-green-50 text-green-700 border-green-300' :
+                                status === 'error' ? 'bg-red-50 text-red-600 border-red-300' :
+                                'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
+                              }`}
+                            >
+                              {isLoading ? (
+                                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                              ) : status === 'ok' ? (
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+                              ) : status === 'error' ? (
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                              ) : (
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                              )}
+                              {isLoading ? 'Loading…' : status === 'ok' ? 'Loaded' : status === 'error' ? 'Failed' : 'Load'}
+                            </button>
+                            <button
+                              onClick={() => setAccounts(accounts.filter(a => a.sfdc_id !== acct.sfdc_id))}
+                              className="text-slate-400 hover:text-red-500 text-sm px-1"
+                            >×</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Domain Mapping Sheet URL</label>
+                            <input
+                              type="url"
+                              value={acct.sheetUrl}
+                              onChange={e => {
+                                const updated = [...accounts];
+                                const realIdx = accounts.findIndex(a => a.sfdc_id === acct.sfdc_id);
+                                updated[realIdx] = { ...updated[realIdx], sheetUrl: e.target.value };
+                                setAccounts(updated);
+                              }}
+                              placeholder="https://docs.google.com/spreadsheets/..."
+                              className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Contract Start (M1)</label>
+                            <input
+                              type="month"
+                              value={acct.contractStartDate || ''}
+                              onChange={e => {
+                                const updated = [...accounts];
+                                const realIdx = accounts.findIndex(a => a.sfdc_id === acct.sfdc_id);
+                                updated[realIdx] = { ...updated[realIdx], contractStartDate: e.target.value };
+                                setAccounts(updated);
+                              }}
+                              className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

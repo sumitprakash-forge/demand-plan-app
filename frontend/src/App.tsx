@@ -251,83 +251,14 @@ export default function App() {
               <p className="text-sm text-gray-500 mt-1">Databricks Consumption Planning & Forecasting</p>
             </div>
             <div className="flex items-start gap-4">
-              {/* Multi-Account Configuration */}
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Accounts</label>
-                {accounts.map((acct, idx) => (
-                  <div key={idx} className="flex items-center gap-2 mb-1">
-                    <input
-                      type="text"
-                      value={acct.name}
-                      onChange={(e) => updateAccount(idx, 'name', e.target.value)}
-                      placeholder="Display name"
-                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 w-28"
-                      title="Display name for this account"
-                    />
-                    <input
-                      type="text"
-                      value={acct.sfdc_id}
-                      onChange={(e) => updateAccount(idx, 'sfdc_id', e.target.value)}
-                      placeholder="SFDC Account ID or Name"
-                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-48 font-mono text-xs"
-                      title="SFDC Account ID (18-char) or exact account name in Logfood"
-                    />
-                    <input
-                      type="text"
-                      value={acct.sheetUrl}
-                      onChange={(e) => updateAccount(idx, 'sheetUrl', e.target.value)}
-                      placeholder="Domain Mapping Sheet URL"
-                      className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-56"
-                    />
-                    <button
-                      onClick={() => handleLoadAccount(acct)}
-                      disabled={!acct.sfdc_id.trim() || loadingAccounts[acct.sfdc_id]}
-                      className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors
-                        ${loadStatus[acct.sfdc_id] === 'ok' ? 'bg-green-50 text-green-700 border-green-300' :
-                          loadStatus[acct.sfdc_id] === 'error' ? 'bg-red-50 text-red-600 border-red-300' :
-                          'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'}
-                        disabled:opacity-40`}
-                      title="Load data for this account"
-                    >
-                      {loadingAccounts[acct.sfdc_id] ? (
-                        <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : loadStatus[acct.sfdc_id] === 'ok' ? (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : loadStatus[acct.sfdc_id] === 'error' ? (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      ) : (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                      )}
-                      {loadingAccounts[acct.sfdc_id] ? 'Loading…' : loadStatus[acct.sfdc_id] === 'ok' ? 'Loaded' : loadStatus[acct.sfdc_id] === 'error' ? 'Failed' : 'Load'}
-                    </button>
-                    {accounts.length > 1 && (
-                      <button
-                        onClick={() => removeAccount(idx)}
-                        className="text-red-400 hover:text-red-600 text-sm px-1"
-                        title="Remove account"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
+              {/* Accounts — read-only chips, managed in Setup tab */}
+              <div className="flex items-center gap-2 mt-4">
+                <span className="text-xs font-medium text-gray-500">Accounts:</span>
+                {accounts.filter(a => a.name.trim()).map((acct, idx) => (
+                  <span key={idx} className="px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-semibold">
+                    {acct.name}
+                  </span>
                 ))}
-                <button
-                  onClick={addAccount}
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  + Add Account
-                </button>
               </div>
 
               {/* Clear All Data Button */}
@@ -441,7 +372,7 @@ export default function App() {
 
       {/* Tab Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'setup' && <SetupTab accounts={accounts} setAccounts={setAccounts} />}
+        {activeTab === 'setup' && <SetupTab accounts={accounts} setAccounts={setAccounts} onLoadAccount={handleLoadAccount} loadingAccounts={loadingAccounts} loadStatus={loadStatus} />}
         {activeTab === 'summary' && <SummaryTab accounts={accounts} setAccounts={setAccounts} />}
         {activeTab === 'historical' && <HistoricalTab accounts={accounts} />}
         {activeTab === 'scenario' && <ScenarioTab accounts={accounts} />}
