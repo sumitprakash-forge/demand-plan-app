@@ -16,6 +16,7 @@ export interface UseCase {
   monthlyProjection: number[];
   cloud?: string;
   assumptions?: string;
+  workloadType?: string;
   skuBreakdown?: { sku: string; percentage: number; dbus: number; dollarDbu: number }[];
 }
 
@@ -84,10 +85,17 @@ const PCT_FMT = '0.0%';
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** M1-based index (1=M1) → "May_2026" using contractStartDate "YYYY-MM" */
+/** M1-based index (1=M1) → "May_2026" using contractStartDate "YYYY-MM".
+ *  Falls back to next calendar month when contractStartDate is blank,
+ *  matching the backend's default behaviour. */
 function projMonthLabel(monthNum: number, contractStartDate: string): string {
-  if (!contractStartDate) return `M${monthNum}`;
-  const [y, m] = contractStartDate.split('-').map(Number);
+  let csd = contractStartDate;
+  if (!csd) {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    csd = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+  }
+  const [y, m] = csd.split('-').map(Number);
   const d = new Date(y, m - 1 + (monthNum - 1));
   return `${MONTH_NAMES[d.getMonth()]}_${d.getFullYear()}`;
 }
@@ -341,13 +349,20 @@ function buildProjectionSheetMulti(
 
     // Year summary block
     const csd = ad.contractStartDate || '';
-    const yl1 = csd ? `Y1 (${projMonthLabel(1, csd)}–${projMonthLabel(12, csd)})` : 'Year 1';
-    const yl2 = csd ? `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})` : 'Year 2';
-    const yl3 = csd ? `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})` : 'Year 3';
+    const yl1 = `Y1 (${projMonthLabel(1, csd)}–${projMonthLabel(12, csd)})`;
+    const yl2 = `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})`;
+    const yl3 = `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})`;
     ws.addRow([]);
-    const yhRow = ws.addRow(['', yl1, yl2, yl3, 'Grand Total']);
-    yhRow.height = 18;
+
+    // Account name header inline with year columns
+    const yhRow = ws.addRow([`${ad.accountName}  —  Year Summary`, yl1, yl2, yl3, 'Grand Total']);
+    yhRow.height = 20;
     [1, 2, 3, 4, 5].forEach(c => { yhRow.getCell(c).style = headerStyle(sc.bg); });
+    yhRow.getCell(1).style = {
+      ...headerStyle(sc.bg),
+      font: { bold: true, size: 10, color: rgb(HEADER_FG), name: 'Calibri' },
+      alignment: { vertical: 'middle', horizontal: 'left', indent: 1 },
+    };
 
     const yLabels = ['Baseline', 'New Use Cases', 'Grand Total'];
     const yData = [baseYearTotals, ucYearTotals, yearTotals];
@@ -603,6 +618,19 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
+// ─── Size tier helper ─────────────────────────────────────────────────────────
+
+function sizeTierLabel(ssPerMonth: number): string {
+  if (ssPerMonth <= 3000)   return 'XS ($3K/mo)';
+  if (ssPerMonth <= 5000)   return 'S ($5K/mo)';
+  if (ssPerMonth <= 15000)  return 'M ($15K/mo)';
+  if (ssPerMonth <= 35000)  return 'L ($35K/mo)';
+  if (ssPerMonth <= 75000)  return 'XL ($75K/mo)';
+  if (ssPerMonth <= 150000) return 'XXL ($150K/mo)';
+  if (ssPerMonth <= 300000) return 'XXXL ($300K/mo)';
+  return `Custom ($${Math.round(ssPerMonth / 1000)}K/mo)`;
+}
+
 // ─── Use Case Details sheet (per account) ────────────────────────────────────
 
 function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
@@ -611,23 +639,24 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     properties: { tabColor: { argb: 'FF059669' } },
   });
 
-  // Columns: Name | Domain | SS $/mo | Cloud | Onboard | Live | Ramp | S1|S2|S3 | Y1 | Y2 | Y3 | Total | Assumptions
   const y1Label = csd ? `Y1 (${projMonthLabel(1, csd)}–${projMonthLabel(12, csd)})` : 'Year 1';
   const y2Label = csd ? `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})` : 'Year 2';
   const y3Label = csd ? `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})` : 'Year 3';
 
+  // Columns: Name | Domain | Size Tier | SS $/mo | Workload Type | Cloud | Onboard | Live | Ramp Duration | Ramp | S1|S2|S3 | Y1 | Y2 | Y3 | Total | Assumptions
   ws.columns = [
-    { key: 'name',    width: 34 }, { key: 'domain',  width: 22 }, { key: 'ss',     width: 18 },
-    { key: 'cloud',   width: 10 }, { key: 'onboard', width: 16 }, { key: 'live',   width: 16 },
-    { key: 'ramp',    width: 14 }, { key: 's1',      width: 5  }, { key: 's2',     width: 5  },
-    { key: 's3',      width: 5  }, { key: 'y1',      width: 18 }, { key: 'y2',     width: 18 },
-    { key: 'y3',      width: 18 }, { key: 'total',   width: 18 }, { key: 'notes',  width: 60 },
+    { key: 'name',     width: 34 }, { key: 'domain',   width: 22 }, { key: 'tier',    width: 18 },
+    { key: 'ss',       width: 14 }, { key: 'wltype',   width: 18 }, { key: 'cloud',   width: 10 },
+    { key: 'onboard',  width: 16 }, { key: 'live',     width: 16 }, { key: 'rampmo',  width: 14 },
+    { key: 'ramp',     width: 14 }, { key: 's1',       width: 5  }, { key: 's2',      width: 5  },
+    { key: 's3',       width: 5  }, { key: 'y1',       width: 18 }, { key: 'y2',      width: 18 },
+    { key: 'y3',       width: 18 }, { key: 'total',    width: 18 }, { key: 'notes',   width: 60 },
   ];
 
-  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with SKU breakdown and assumptions', 15);
+  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with full configuration, SKU breakdown, and assumptions', 18);
   const hrow = ws.addRow([
-    'Name', 'Domain', 'Steady-State $/mo', 'Cloud',
-    'Onboard Month', 'Live Month', 'Ramp Type', 'S1', 'S2', 'S3',
+    'Name', 'Domain', 'Size Tier', 'DBUs/mo (steady state)', 'Workload Type', 'Cloud',
+    'Onboard Month', 'Live Month', 'Ramp Duration (mo)', 'Ramp Type', 'S1', 'S2', 'S3',
     y1Label, y2Label, y3Label, 'Grand Total', 'Assumptions',
   ]);
   applyRowStyle(hrow, headerStyle()); hrow.height = 22;
@@ -636,10 +665,21 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   ad.allUseCases.forEach((uc) => {
     const yT = [0, 0, 0];
     uc.monthlyProjection.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
+    const rampDuration = Math.max(0, uc.liveMonth - uc.onboardingMonth);
+    // Derive approx DBUs/mo from steadyStateDbu using a blended ~$0.20/DBU list price
+    const estDbus = uc.skuBreakdown?.length
+      ? uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)
+      : Math.round(uc.steadyStateDbu / 0.20);
     const ucRow = ws.addRow([
-      uc.name, uc.domain, uc.steadyStateDbu, uc.cloud || '',
+      uc.name,
+      uc.domain,
+      sizeTierLabel(uc.steadyStateDbu),
+      estDbus,                   // col 4: DBUs/mo
+      uc.workloadType || '—',    // col 5: Workload Type ($/mo shown in Y1/Y2/Y3 columns)
+      uc.cloud || '',
       projMonthLabel(uc.onboardingMonth, csd),
       projMonthLabel(uc.liveMonth, csd),
+      rampDuration,
       uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear',
       uc.scenarios[0] ? '✓' : '', uc.scenarios[1] ? '✓' : '', uc.scenarios[2] ? '✓' : '',
       yT[0], yT[1], yT[2], yT.reduce((a, b) => a + b, 0),
@@ -647,26 +687,33 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     ]);
     applyRowStyle(ucRow, dataStyle(ucCount % 2 === 0));
     ucRow.getCell(1).font = { bold: true, size: 10, name: 'Calibri' };
-    [3, 11, 12, 13, 14].forEach(col => {
+    ucRow.getCell(4).numFmt = '#,##0';   // DBUs/mo — integer format
+    [14, 15, 16, 17].forEach(col => {
       const c = ucRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
     });
-    [8, 9, 10].forEach(col => {
+    [11, 12, 13].forEach(col => {
       ucRow.getCell(col).alignment = { horizontal: 'center', vertical: 'middle' };
       ucRow.getCell(col).font = { color: rgb('059669'), bold: true, name: 'Calibri', size: 11 };
     });
-    ucRow.getCell(15).alignment = { wrapText: true, vertical: 'top' };
+    ucRow.getCell(18).alignment = { wrapText: true, vertical: 'top' };
 
     // SKU breakdown sub-rows
     if (uc.skuBreakdown?.length) {
       uc.skuBreakdown.forEach((sku) => {
+        const pricePerDbu = sku.dbus > 0 ? sku.dollarDbu / sku.dbus : 0;
         const skuRow = ws.addRow([
-          `    └─ ${sku.sku}`, '', sku.dollarDbu, '',
-          `${sku.percentage}% of UC`, '', '', '', '', '',
+          `    └─ ${sku.sku}`,
+          '',
+          `${sku.percentage}% of UC`,
+          Math.round(sku.dbus),        // col 4: DBUs/mo (quantity first)
+          sku.dollarDbu,               // col 5: $/mo (dollars second)
+          `$/DBU: ${pricePerDbu.toFixed(2)}`,
+          '', '', '', '', '', '', '',
           yT[0] * sku.percentage / 100,
           yT[1] * sku.percentage / 100,
           yT[2] * sku.percentage / 100,
           yT.reduce((a, b) => a + b, 0) * sku.percentage / 100,
-          `DBUs/mo: ${Math.round(sku.dbus)}  ·  $/DBU: ${sku.dbus > 0 ? (sku.dollarDbu / sku.dbus).toFixed(2) : 'N/A'}`,
+          '',
         ]);
         skuRow.height = 16;
         skuRow.eachCell({ includeEmpty: true }, (cell) => {
@@ -676,11 +723,13 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
             alignment: { vertical: 'middle' },
           };
         });
-        [3, 11, 12, 13, 14].forEach(col => {
+        // col 4 = DBUs (no $ format), col 5 = $/mo (USD), cols 14-17 = year $ totals
+        skuRow.getCell(4).numFmt = '#,##0';
+        [5, 14, 15, 16, 17].forEach(col => {
           const c = skuRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
         });
         skuRow.getCell(1).alignment = { vertical: 'middle', indent: 2 };
-        skuRow.getCell(15).alignment = { vertical: 'middle', wrapText: true };
+        skuRow.getCell(18).alignment = { vertical: 'middle', wrapText: true };
       });
     }
 
@@ -689,7 +738,9 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
 
   // Totals row
   const totRow = ws.addRow([
-    'TOTAL', '', ad.allUseCases.reduce((s, uc) => s + uc.steadyStateDbu, 0), '', '', '', '', '', '', '',
+    'TOTAL', '', '',
+    ad.allUseCases.reduce((s, uc) => s + (uc.skuBreakdown?.length ? uc.skuBreakdown.reduce((a, sk) => a + sk.dbus, 0) : Math.round(uc.steadyStateDbu / 0.20)), 0),
+    '', '', '', '', '', '', '', '', '',
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(0, 12).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(12, 24).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(24, 36).reduce((a, v) => a + v, 0), 0),
@@ -697,11 +748,185 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     '',
   ]);
   applyRowStyle(totRow, totalStyle(GRAND_BG));
-  [3, 11, 12, 13, 14].forEach(col => {
+  totRow.getCell(4).numFmt = '#,##0';
+  [14, 15, 16, 17].forEach(col => {
     const c = totRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
   });
 
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
+}
+
+// ─── Consumption Forecast sheet (per scenario, per account) ──────────────────
+// Month-by-month projection with SKU sub-rows under each use case
+
+function buildConsumptionForecastSheet(
+  wb: ExcelJS.Workbook,
+  scenarioNum: 1 | 2 | 3,
+  accountsData: AccountExportData[]
+) {
+  const sc = SCENARIO_COLORS[scenarioNum];
+  const totalCols = 1 + 36 + 4;
+
+  const ws = wb.addWorksheet(`S${scenarioNum} — Forecast`, {
+    properties: { tabColor: { argb: 'FF' + sc.bg } },
+    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+  });
+
+  ws.columns = [
+    { key: 'label', width: 42 },
+    ...Array.from({ length: 36 }, (_, i) => ({ key: `m${i + 1}`, width: 9 })),
+    { key: 'y1', width: 14 },
+    { key: 'y2', width: 14 },
+    { key: 'y3', width: 14 },
+    { key: 'grand', width: 16 },
+  ];
+
+  addSheetTitle(
+    ws,
+    `Scenario ${scenarioNum}  ·  Consumption Forecast — Month-by-Month`,
+    'All accounts  ·  Baseline + Use Cases  ·  SKU-level breakdown  ·  Databricks List Price',
+    totalCols
+  );
+
+  const firstCsd = accountsData[0]?.contractStartDate || '';
+  const monthLabels = Array.from({ length: 36 }, (_, i) => projMonthLabel(i + 1, firstCsd));
+
+  const y1Label = firstCsd
+    ? `Y1 (${projMonthLabel(1, firstCsd)}–${projMonthLabel(12, firstCsd)})`
+    : 'Y1 Total';
+  const y2Label = firstCsd
+    ? `Y2 (${projMonthLabel(13, firstCsd)}–${projMonthLabel(24, firstCsd)})`
+    : 'Y2 Total';
+  const y3Label = firstCsd
+    ? `Y3 (${projMonthLabel(25, firstCsd)}–${projMonthLabel(36, firstCsd)})`
+    : 'Y3 Total';
+
+  const hrow = ws.addRow(['', ...monthLabels, y1Label, y2Label, y3Label, 'Grand Total']);
+  hrow.height = 30;
+  hrow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+    cell.style = {
+      font: { bold: true, color: rgb(HEADER_FG), size: 9, name: 'Calibri' },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(sc.bg) },
+      alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
+      border: { right: { style: 'hair', color: rgb('AAAAAA') } },
+    };
+    if (colNum > 37) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('2D4E8A') };
+    }
+  });
+  [13, 25, 37].forEach(col => {
+    const c = hrow.getCell(col + 1);
+    c.border = { ...c.border, right: { style: 'medium', color: rgb('FFFFFF') } };
+  });
+
+  const yearSlice = (vals: number[], yr: number) =>
+    vals.slice(yr * 12, (yr + 1) * 12).reduce((s, v) => s + v, 0);
+
+  const addForecastRow = (
+    label: string,
+    months: number[],
+    style: Partial<ExcelJS.Style>,
+    indent = 0
+  ) => {
+    const y1 = yearSlice(months, 0);
+    const y2 = yearSlice(months, 1);
+    const y3 = yearSlice(months, 2);
+    const grand = y1 + y2 + y3;
+    const r = ws.addRow([label, ...months, y1, y2, y3, grand]);
+    r.height = 17;
+    r.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      Object.assign(cell, { style: { ...cell.style, ...style } });
+      if (colNum > 1 && typeof cell.value === 'number') {
+        cell.numFmt = USD_FMT;
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+    });
+    r.getCell(1).style = {
+      ...style,
+      alignment: { vertical: 'middle', indent },
+      font: { ...(style.font as any), name: 'Calibri', size: 10 },
+    };
+    [13, 25, 37].forEach(col => {
+      const c = r.getCell(col + 1);
+      c.border = { ...c.border, left: { style: 'thin', color: rgb('CCCCCC') } };
+    });
+    return r;
+  };
+
+  for (const ad of accountsData) {
+    const sd = ad.scenariosData.find(s => s.scenarioNum === scenarioNum);
+    if (!sd) continue;
+
+    const { activeUseCases, baselineMonths, totalMonths,
+            baselineGrowthRate, assumptions } = sd;
+    const csd = ad.contractStartDate || '';
+
+    // Account section header
+    ws.addRow([]);
+    const acctRow = ws.addRow([
+      `${ad.accountName.toUpperCase()}  ·  S${scenarioNum}  ·  Baseline Growth: ${baselineGrowthRate.toFixed(1)}% MoM` +
+      (assumptions ? `  ·  ${assumptions}` : '')
+    ]);
+    acctRow.height = 22;
+    acctRow.getCell(1).style = {
+      font: { bold: true, size: 11, color: rgb('FFFFFF'), name: 'Calibri' },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('374151') },
+      alignment: { vertical: 'middle', indent: 1 },
+    };
+    ws.mergeCells(acctRow.number, 1, acctRow.number, totalCols);
+
+    // Baseline row
+    addForecastRow(
+      'Baseline (Existing Consumption)', baselineMonths,
+      { ...dataStyle(false), font: { bold: true, size: 10, name: 'Calibri', color: rgb('374151') } }
+    );
+
+    // Use case rows + SKU sub-rows
+    const ucMonthTotals = new Array(36).fill(0);
+    activeUseCases.forEach((uc, idx) => {
+      const mp = uc.monthlyProjection;
+      mp.forEach((v, i) => { ucMonthTotals[i] += v; });
+
+      // UC header row with size tier and ramp info
+      const tier = sizeTierLabel(uc.steadyStateDbu);
+      const onbLabel = projMonthLabel(uc.onboardingMonth, csd);
+      const liveLabel = projMonthLabel(uc.liveMonth, csd);
+      const ucLabel = `  ↳ ${uc.name}  [${tier}  ·  ${uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'}  ·  ${onbLabel}→${liveLabel}]`;
+
+      addForecastRow(ucLabel, mp, dataStyle(idx % 2 === 0), 2);
+
+      // SKU breakdown rows
+      if (uc.skuBreakdown?.length) {
+        uc.skuBreakdown.forEach(sku => {
+          const skuMonths = mp.map(v => v * (sku.percentage / 100));
+          addForecastRow(
+            `      └─ ${sku.sku} (${sku.percentage}%  ·  $${Math.round(sku.dollarDbu / 1000)}K/mo  ·  ${Math.round(sku.dbus)} DBUs/mo)`,
+            skuMonths,
+            {
+              font: { size: 9, name: 'Calibri', color: rgb('6B7280'), italic: true },
+              fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('F9FAFB') },
+              alignment: { vertical: 'middle' },
+            },
+            5
+          );
+        });
+      }
+    });
+
+    if (activeUseCases.length > 0) {
+      addForecastRow(
+        'New Use Cases Subtotal', ucMonthTotals,
+        { ...totalStyle(TOTAL_BG, TOTAL_FG) }
+      );
+    }
+
+    addForecastRow(
+      `Grand Total (${ad.accountName})`, totalMonths,
+      { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } }
+    );
+  }
+
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5, showGridLines: true }];
 }
 
 // ─── Domain Baseline sheet (per account) ─────────────────────────────────────
@@ -800,7 +1025,7 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   // 1. Summary
   await buildSummarySheet(wb, opts);
 
-  // 2. Projection sheets immediately after summary (S1, S2, S3 combined)
+  // 2. Projection sheets (S1, S2, S3 — multi-account horizontal view)
   for (const sNum of [1, 2, 3] as const) {
     buildProjectionSheetMulti(wb, sNum, opts.accountsData);
   }
@@ -812,7 +1037,7 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
     buildCloudDomainSkuSheet(wb, ad);
   }
 
-  // 4. Per-account detail sheets
+  // 5. Per-account detail sheets
   for (const ad of opts.accountsData) {
     buildUseCaseDetailsSheet(wb, ad);
     buildDomainBaselineSheet(wb, ad);

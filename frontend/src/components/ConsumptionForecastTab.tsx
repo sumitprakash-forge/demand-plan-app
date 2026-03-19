@@ -123,6 +123,27 @@ function CellValue({ value, highlight }: { value: number; highlight?: 'onboardin
   return <td className={`${base} text-slate-700`}>{value > 0 ? formatCurrency(value) : <span className="text-slate-300">—</span>}</td>;
 }
 
+// ─── DBU conversion helpers ───────────────────────────────────────────────────
+
+/** Returns DBUs/$ conversion rate for a use case (from SKU breakdown if available). */
+function dbuRate(ucData: UseCase | null | undefined): number {
+  if (ucData?.skuBreakdown?.length) {
+    const totalDollar = ucData.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
+    const totalDbu    = ucData.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
+    if (totalDollar > 0) return totalDbu / totalDollar;
+  }
+  return 1 / 0.20; // default: $0.20/DBU blended list price
+}
+
+function formatDbu(val: number): string {
+  if (val === 0) return '';
+  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
+  if (val >= 1_000)     return `${(val / 1_000).toFixed(1)}K`;
+  return Math.round(val).toLocaleString();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function ConsumptionForecastTab({ accounts }: { accounts: AccountConfig[] }) {
   const [activeScenario, setActiveScenario] = useState<1 | 2 | 3>(1);
   const [forecastData, setForecastData] = useState<Record<string, ForecastData>>({});
@@ -132,10 +153,11 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const [saving, setSaving] = useState(false);
   const [months, setMonths] = useState(24);
   const [conflictAccount, setConflictAccount] = useState<string | null>(null);
-  const [expandedUCIds, setExpandedUCIds] = useState<Set<string>>(new Set());
+  const [collapsedUCIds, setCollapsedUCIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'dollar' | 'dbu'>('dollar');
 
   const toggleUCExpand = (id: string) => {
-    setExpandedUCIds(prev => {
+    setCollapsedUCIds(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
@@ -266,6 +288,31 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
         </div>
         <div className="flex items-center gap-3">
           {saving && <span className="text-xs text-slate-500 animate-pulse">Saving...</span>}
+
+          {/* DBU / $DBU toggle */}
+          <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+            <button
+              onClick={() => setViewMode('dollar')}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                viewMode === 'dollar'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              $DBU
+            </button>
+            <button
+              onClick={() => setViewMode('dbu')}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors border-l border-slate-200 ${
+                viewMode === 'dbu'
+                  ? 'bg-slate-800 text-white'
+                  : 'bg-white text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              DBUs
+            </button>
+          </div>
+
           <label className="text-xs text-slate-500 flex items-center gap-1.5">
             Months:
             <select
@@ -323,49 +370,87 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500">
                   {multiAccount && <th className="px-3 py-2 text-left font-semibold min-w-[100px]">Account</th>}
-                  <th className="px-3 py-2 text-left font-semibold min-w-[160px]">Name</th>
+                  <th className="px-3 py-2 text-left font-semibold min-w-[160px]">Name / SKU Breakdown</th>
                   <th className="px-3 py-2 text-left font-semibold min-w-[110px]">Domain</th>
-                  <th className="px-3 py-2 text-right font-semibold min-w-[110px]">$/mo (steady state)</th>
+                  <th className="px-3 py-2 text-right font-semibold min-w-[110px]">
+                    {viewMode === 'dbu' ? 'DBUs/mo (steady state)' : '$/mo (steady state)'}
+                  </th>
                   <th className="px-3 py-2 text-center font-semibold min-w-[140px]">Onboard Month</th>
                   <th className="px-3 py-2 text-center font-semibold min-w-[140px]">Live Month</th>
                   <th className="px-3 py-2 text-center font-semibold">S1</th>
                   <th className="px-3 py-2 text-center font-semibold">S2</th>
                   <th className="px-3 py-2 text-center font-semibold">S3</th>
-                  <th className="px-3 py-2 w-8" />
                 </tr>
               </thead>
               <tbody>
                 {allUseCases.map(({ account, uc }, idx) => {
                   const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40';
+                  const skus = (uc.skuBreakdown || []).filter(s => s.percentage > 0);
                   return (
-                    <tr key={uc.id} className={`border-b border-slate-100 ${rowBg}`}>
-                      {multiAccount && <td className="px-3 py-2 text-slate-500 font-medium">{account}</td>}
-                      <td className="px-3 py-2 font-medium text-slate-700">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0 ${colors.bg}`} />
-                        {uc.name || <span className="text-slate-400 italic">Untitled</span>}
-                      </td>
-                      <td className="px-3 py-2 text-slate-500">{uc.domain || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-700">{formatCurrency(uc.steadyStateDbu)}</td>
-                      <td className="px-3 py-2 text-center">
-                        <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium text-xs whitespace-nowrap">
-                          {getMonthLabel(uc.onboardingMonth, accounts.find(a => a.name === account)?.contractStartDate)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 font-medium text-xs whitespace-nowrap">
-                          {getMonthLabel(uc.liveMonth, accounts.find(a => a.name === account)?.contractStartDate)}
-                        </span>
-                      </td>
-                      {([0, 1, 2] as const).map(si => (
-                        <td key={si} className="px-3 py-2 text-center">
-                          <input type="checkbox" checked={uc.scenarios[si]}
-                            onChange={() => toggleUcScenario(account, uc.id, si)}
-                            className="w-4 h-4 rounded cursor-pointer"
-                            style={{ accentColor: ['#2563eb', '#9333ea', '#059669'][si] }} />
+                    <React.Fragment key={uc.id}>
+                      <tr className={`border-b ${skus.length ? 'border-slate-50' : 'border-slate-100'} ${rowBg}`}>
+                        {multiAccount && <td className="px-3 py-2 text-slate-500 font-medium" rowSpan={skus.length ? skus.length + 1 : 1}>{account}</td>}
+                        <td className="px-3 py-2 font-medium text-slate-700">
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 flex-shrink-0 ${colors.bg}`} />
+                          {uc.name || <span className="text-slate-400 italic">Untitled</span>}
                         </td>
+                        <td className="px-3 py-2 text-slate-500">{uc.domain || '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-slate-700 font-semibold">
+                          {viewMode === 'dbu'
+                            ? `${formatDbu(dbuRate(uc) * uc.steadyStateDbu)} DBUs`
+                            : formatCurrency(uc.steadyStateDbu)}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-medium text-xs whitespace-nowrap">
+                            {getMonthLabel(uc.onboardingMonth, accounts.find(a => a.name === account)?.contractStartDate)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 font-medium text-xs whitespace-nowrap">
+                            {getMonthLabel(uc.liveMonth, accounts.find(a => a.name === account)?.contractStartDate)}
+                          </span>
+                        </td>
+                        {([0, 1, 2] as const).map(si => (
+                          <td key={si} className="px-3 py-2 text-center">
+                            <input type="checkbox" checked={uc.scenarios[si]}
+                              onChange={() => toggleUcScenario(account, uc.id, si)}
+                              className="w-4 h-4 rounded cursor-pointer"
+                              style={{ accentColor: ['#2563eb', '#9333ea', '#059669'][si] }} />
+                          </td>
+                        ))}
+                      </tr>
+                      {/* SKU sub-rows */}
+                      {skus.map((alloc, si) => (
+                        <tr key={`${uc.id}-sku-${si}`} className={`border-b border-slate-100 ${rowBg}`}>
+                          {multiAccount && null}
+                          <td className="pl-7 pr-3 py-1" colSpan={1}>
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                              <span className="text-slate-300">└─</span>
+                              <span className="font-medium">{alloc.sku}</span>
+                              <span className="bg-slate-100 text-slate-500 rounded px-1">{alloc.percentage}%</span>
+                              {viewMode === 'dbu' ? (
+                                <>
+                                  {alloc.dbus > 0 && <span className="text-slate-400">{Math.round(alloc.dbus).toLocaleString()} DBUs/mo</span>}
+                                  {alloc.dollarDbu > 0 && <span className="text-slate-400">{formatCurrency(alloc.dollarDbu)}/mo</span>}
+                                </>
+                              ) : (
+                                <>
+                                  {alloc.dollarDbu > 0 && <span className="text-slate-400">{formatCurrency(alloc.dollarDbu)}/mo</span>}
+                                  {alloc.dbus > 0 && <span className="text-slate-400">{Math.round(alloc.dbus).toLocaleString()} DBUs/mo</span>}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-1 text-[11px] text-slate-400">{uc.domain || '—'}</td>
+                          <td className="px-3 py-1 text-right font-mono text-[11px] text-slate-500">
+                            {viewMode === 'dbu'
+                              ? (alloc.dbus > 0 ? `${Math.round(alloc.dbus).toLocaleString()} DBUs` : `${formatDbu(dbuRate(uc) * uc.steadyStateDbu * alloc.percentage / 100)} DBUs`)
+                              : formatCurrency(uc.steadyStateDbu * alloc.percentage / 100)}
+                          </td>
+                          <td colSpan={5} />
+                        </tr>
                       ))}
-                      <td />
-                    </tr>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -427,7 +512,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
-                      Click arrow on use cases to expand SKU breakdown
+                      SKU breakdown shown inline — click arrow to collapse
                     </span>
                   </div>
                 )}
@@ -442,7 +527,10 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         </th>
                         <th className="px-2 py-2 text-left font-semibold text-slate-500 min-w-[90px]">Domain</th>
                         {monthLabels.map((m, i) => (
-                          <th key={i} className="px-2 py-2 text-right font-medium text-slate-500 min-w-[80px] whitespace-nowrap">{m}</th>
+                          <th key={i} className="px-2 py-2 text-right font-medium text-slate-500 min-w-[80px] whitespace-nowrap">
+                            {m}
+                            {viewMode === 'dbu' && <div className="text-[10px] font-normal text-slate-400">DBUs</div>}
+                          </th>
                         ))}
                       </tr>
                     </thead>
@@ -458,7 +546,8 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                           : null;
                         const skus = ucData?.skuBreakdown?.filter(a => a.percentage > 0) || [];
                         const hasSkus = skus.length > 0;
-                        const isExpanded = expandedUCIds.has(row.id);
+                        const isExpanded = !collapsedUCIds.has(row.id);
+                        const rate = dbuRate(ucData);
 
                         return (
                           <React.Fragment key={row.id}>
@@ -477,7 +566,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                                     <button
                                       onClick={() => toggleUCExpand(row.id)}
                                       className="flex-shrink-0 text-slate-400 hover:text-slate-700 transition-colors"
-                                      title={isExpanded ? 'Hide SKU breakdown' : 'Show SKU breakdown'}
+                                      title={isExpanded ? 'Collapse SKU breakdown' : 'Expand SKU breakdown'}
                                     >
                                       <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -492,23 +581,50 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                                 const highlight = !isBaseline
                                   ? (monthNum === om ? 'onboarding' : monthNum === lm ? 'live' : null)
                                   : null;
+                                if (viewMode === 'dbu') {
+                                  const dbuVal = v * rate;
+                                  return (
+                                    <td key={i} className={`px-2 py-1.5 text-right text-xs font-mono whitespace-nowrap ${
+                                      highlight === 'onboarding' ? 'bg-amber-200 text-amber-900 font-bold border-x-2 border-amber-500'
+                                      : highlight === 'live'     ? 'bg-green-200 text-green-900 font-bold border-x-2 border-green-500'
+                                      : 'text-slate-600'
+                                    }`}>
+                                      {dbuVal > 0 ? formatDbu(dbuVal) : <span className="text-slate-300">—</span>}
+                                    </td>
+                                  );
+                                }
                                 return <CellValue key={i} value={v} highlight={highlight} />;
                               })}
                             </tr>
 
-                            {/* SKU breakdown sub-rows */}
+                            {/* SKU breakdown sub-rows — always expanded by default */}
                             {hasSkus && isExpanded && skus.map((alloc, si) => (
-                              <tr key={`${row.id}-sku-${si}`} className="border-b border-slate-100 bg-slate-50/60">
-                                <td className="pl-8 pr-3 py-1 sticky left-0 z-10 bg-slate-50/60 border-r border-slate-100">
+                              <tr key={`${row.id}-sku-${si}`} className="border-b border-slate-100 bg-slate-50/50">
+                                <td className="pl-8 pr-3 py-1 sticky left-0 z-10 bg-slate-50/50 border-r border-slate-100">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
-                                    <span className="text-slate-500 text-[11px] font-normal">{alloc.sku}</span>
-                                    <span className="text-[10px] text-slate-400 ml-auto">{alloc.percentage}%</span>
+                                    <span className="text-slate-300 text-[10px]">└─</span>
+                                    <span className="text-slate-600 text-[11px] font-medium">{alloc.sku}</span>
+                                    <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{alloc.percentage}%</span>
+                                    {alloc.dbus > 0 && (
+                                      <span className="text-[10px] text-slate-400">{Math.round(alloc.dbus).toLocaleString()} DBUs/mo</span>
+                                    )}
+                                    {alloc.dollarDbu > 0 && (
+                                      <span className="text-[10px] text-slate-400 ml-1">{formatCurrency(alloc.dollarDbu)}/mo</span>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-2 py-1 text-slate-300 text-[11px]">—</td>
                                 {row.values.map((v, i) => {
-                                  const skuVal = v * alloc.percentage / 100;
+                                  const skuFrac = alloc.percentage / 100;
+                                  if (viewMode === 'dbu') {
+                                    const skuDbu = v * skuFrac * (alloc.dbus > 0 && alloc.dollarDbu > 0 ? alloc.dbus / alloc.dollarDbu : rate);
+                                    return (
+                                      <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
+                                        {skuDbu > 0 ? formatDbu(skuDbu) : <span className="text-slate-200">—</span>}
+                                      </td>
+                                    );
+                                  }
+                                  const skuVal = v * skuFrac;
                                   return (
                                     <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
                                       {skuVal > 0 ? formatCurrency(skuVal) : <span className="text-slate-200">—</span>}
@@ -529,7 +645,9 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         <td className={`px-2 py-2 ${colors.light}`} />
                         {fd.totals.map((t, i) => (
                           <td key={i} className={`px-2 py-2 text-right text-xs font-bold ${colors.text} ${colors.light}`}>
-                            {formatCurrency(t)}
+                            {viewMode === 'dbu'
+                              ? formatDbu(t * (1 / 0.20))
+                              : formatCurrency(t)}
                           </td>
                         ))}
                       </tr>
