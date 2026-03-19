@@ -367,13 +367,30 @@ function buildProjectionSheetMulti(
     const yLabels = ['Baseline', 'New Use Cases', 'Grand Total'];
     const yData = [baseYearTotals, ucYearTotals, yearTotals];
     const yBgs = [TOTAL_BG, 'E0F2FE', GRAND_BG];
+    const DBU_RATE = 1 / 0.20; // $0.20/DBU blended list price
     yLabels.forEach((label, li) => {
-      const r = ws.addRow([label, yData[li][0], yData[li][1], yData[li][2],
+      // $DBU row
+      const r = ws.addRow([`${label} — $DBU`, yData[li][0], yData[li][1], yData[li][2],
         yData[li].reduce((s, v) => s + v, 0)]);
       r.height = 18;
       applyRowStyle(r, totalStyle(yBgs[li]));
       [2, 3, 4, 5].forEach(c => {
         if (typeof r.getCell(c).value === 'number') r.getCell(c).numFmt = USD_FMT;
+      });
+      // DBU row (dollar value ÷ $0.20 per DBU)
+      const dbuVals = yData[li].map(v => Math.round(v * DBU_RATE));
+      const dbuRow = ws.addRow([`${label} — DBUs`,
+        dbuVals[0], dbuVals[1], dbuVals[2],
+        dbuVals.reduce((s, v) => s + v, 0)]);
+      dbuRow.height = 16;
+      applyRowStyle(dbuRow, {
+        font: { size: 9, name: 'Calibri', italic: true, color: rgb('4B5563') },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(yBgs[li]) },
+        alignment: { vertical: 'middle', indent: 2 },
+        border: {},
+      });
+      [2, 3, 4, 5].forEach(c => {
+        if (typeof dbuRow.getCell(c).value === 'number') dbuRow.getCell(c).numFmt = '#,##0';
       });
     });
   }
@@ -1041,7 +1058,6 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   for (const ad of opts.accountsData) {
     buildUseCaseDetailsSheet(wb, ad);
     buildDomainBaselineSheet(wb, ad);
-    buildSkuBreakdownSheet(wb, ad);
   }
 
   const buffer = await wb.xlsx.writeBuffer();

@@ -251,10 +251,12 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const sc = activeScenario as 1 | 2 | 3;
   const colors = SCENARIO_COLORS[sc];
 
-  // Collect all use cases across accounts for the panel
+  // Collect use cases active in the current scenario across accounts
   const allUseCases: Array<{ account: string; uc: UseCase }> = [];
   Object.entries(scenarioData).forEach(([account, sd]) => {
-    (sd.new_use_cases || []).forEach(uc => allUseCases.push({ account, uc }));
+    (sd.new_use_cases || [])
+      .filter(uc => uc.scenarios[activeScenario - 1])
+      .forEach(uc => allUseCases.push({ account, uc }));
   });
 
   const multiAccount = activeAccounts.length > 1;
