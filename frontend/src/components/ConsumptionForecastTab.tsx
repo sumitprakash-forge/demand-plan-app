@@ -556,10 +556,16 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         </td>
                         {([0, 1, 2] as const).map(si => (
                           <td key={si} className="px-3 py-2 text-center">
-                            <input type="checkbox" checked={uc.scenarios[si]}
-                              onChange={() => toggleUcScenario(account, uc.id, si)}
-                              className="w-4 h-4 rounded cursor-pointer"
-                              style={{ accentColor: ['#2563eb', '#9333ea', '#059669'][si] }} />
+                            {uc.scenarios[si]
+                              ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full" style={{ background: ['#DBEAFE','#F3E8FF','#D1FAE5'][si] }}>
+                                  <svg className="w-3 h-3" style={{ color: ['#2563eb','#9333ea','#059669'][si] }} fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                </span>
+                              : <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100">
+                                  <span className="w-2 h-0.5 bg-slate-300 rounded" />
+                                </span>
+                            }
                           </td>
                         ))}
                       </tr>
@@ -614,7 +620,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
           <span>Goes live</span>
         </div>
         <span className="text-slate-300">|</span>
-        <span className="text-slate-400">Click a use case name to edit inline</span>
+        <span className="text-slate-400">Read-only — manage use cases in the Scenario Builder tab</span>
       </div>
 
       {error && <div className="p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{error}</div>}
