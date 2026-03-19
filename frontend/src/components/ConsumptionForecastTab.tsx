@@ -176,120 +176,6 @@ function formatDbu(val: number): string {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ScenarioAssumptionsReadonly({
-  scenarioData, activeAccounts, activeScenario, colors, scenarioLabel,
-}: {
-  scenarioData: Record<string, ScenarioData>;
-  activeAccounts: AccountConfig[];
-  activeScenario: number;
-  colors: typeof SCENARIO_COLORS[1];
-  scenarioLabel: string;
-}) {
-  const [expandedOverrides, setExpandedOverrides] = useState<Record<string, boolean>>({});
-
-  return (
-    <div className={`border ${colors.border} rounded-xl overflow-hidden shadow-sm`}>
-      <div className={`px-4 py-3 ${colors.light} border-b ${colors.border} flex items-center justify-between`}>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-bold px-2 py-0.5 rounded ${colors.badge}`}>{scenarioLabel}</span>
-          <span className="text-sm font-semibold text-slate-700">Scenario Builder — Assumptions (read-only)</span>
-        </div>
-        <span className="text-xs text-slate-400 italic">Edit in the Scenario Builder tab</span>
-      </div>
-
-      <div className="divide-y divide-slate-100">
-        {activeAccounts.map(acc => {
-          const sd = scenarioData[acc.name];
-          if (!sd) return null;
-          const overrides = sd.baseline_overrides || [];
-          const overridesMap: Record<number, number> = {};
-          overrides.forEach(o => { overridesMap[o.month_index] = o.value; });
-          const isExpanded = expandedOverrides[acc.name];
-
-          return (
-            <div key={acc.name} className="px-5 py-4 bg-white">
-              {activeAccounts.length > 1 && (
-                <p className="text-xs font-semibold text-slate-500 mb-3 uppercase tracking-wide">{acc.name}</p>
-              )}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-
-                {/* Baseline MoM growth */}
-                <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1">Baseline MoM Growth</p>
-                  <p className={`text-lg font-bold ${colors.text}`}>
-                    {((sd.baseline_growth_rate || 0) * 100).toFixed(2)}%
-                  </p>
-                  <p className="text-[10px] text-slate-400">month-over-month</p>
-                </div>
-
-                {/* Use cases in this scenario */}
-                <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1">Active Use Cases</p>
-                  <p className={`text-lg font-bold ${colors.text}`}>
-                    {(sd.new_use_cases || []).filter(uc => uc.scenarios[activeScenario - 1]).length}
-                  </p>
-                  <p className="text-[10px] text-slate-400">in {scenarioLabel}</p>
-                </div>
-
-                {/* Monthly overrides */}
-                <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide mb-1">Baseline Overrides</p>
-                  <div className="flex items-center gap-2">
-                    <p className={`text-lg font-bold ${overrides.length > 0 ? 'text-amber-600' : colors.text}`}>
-                      {overrides.length}
-                    </p>
-                    {overrides.length > 0 && (
-                      <button
-                        onClick={() => setExpandedOverrides(prev => ({ ...prev, [acc.name]: !isExpanded }))}
-                        className="text-[10px] text-amber-600 underline hover:text-amber-800"
-                      >
-                        {isExpanded ? 'hide' : 'show'}
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-400">manual month overrides</p>
-                </div>
-
-              </div>
-
-              {/* Assumptions text */}
-              {sd.assumptions_text && (
-                <div className="mt-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 whitespace-pre-wrap leading-relaxed">
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide block mb-1">Assumptions / Notes</span>
-                  {sd.assumptions_text}
-                </div>
-              )}
-
-              {/* Overrides grid (read-only) */}
-              {overrides.length > 0 && isExpanded && (
-                <div className="mt-3">
-                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-2">Monthly Baseline Overrides</p>
-                  <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
-                    {overrides
-                      .slice()
-                      .sort((a, b) => a.month_index - b.month_index)
-                      .map(o => (
-                        <div key={o.month_index} className="flex flex-col bg-amber-50 border border-amber-300 rounded px-2 py-1.5">
-                          <span className="text-[10px] text-amber-700 font-medium">
-                            {getMonthLabel(o.month_index + 1, acc.contractStartDate)}
-                          </span>
-                          <span className="text-xs font-bold text-amber-900 font-mono">
-                            {formatCurrency(o.value)}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-
 function ForecastDomainCharts({
   forecastData, activeAccounts, activeScenario, months,
 }: {
@@ -607,17 +493,6 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
           );
         })}
       </div>
-
-      {/* ── Scenario Builder — Read-only Assumptions ── */}
-      {activeAccounts.length > 0 && Object.keys(scenarioData).length > 0 && (
-        <ScenarioAssumptionsReadonly
-          scenarioData={scenarioData}
-          activeAccounts={activeAccounts}
-          activeScenario={activeScenario}
-          colors={colors}
-          scenarioLabel={SCENARIO_LABELS[sc]}
-        />
-      )}
 
       {/* ── Use Cases Panel ── */}
       <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
