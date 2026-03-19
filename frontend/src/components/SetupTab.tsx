@@ -272,6 +272,7 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [method, setMethod] = useState<'gcloud' | 'device' | null>(null);
+  const [gcloudMissing, setGcloudMissing] = useState(false);
   // Device flow state
   const [flowData, setFlowData] = useState<{ device_code: string; user_code: string; verification_url: string; expires_in: number; interval: number } | null>(null);
   const [polling, setPolling] = useState(false);
@@ -283,12 +284,17 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
     try {
       const gcloud = await apiFetch('/api/setup/google/check-gcloud', { method: 'POST' });
       if (gcloud.status === 'ok') {
-        // gcloud works — mark as authorized via gcloud
         setMethod('gcloud');
         onDone();
         return;
       }
-      // gcloud not available — try device flow
+      // gcloud not available
+      if (gcloud.detail?.includes('not installed')) {
+        setGcloudMissing(true);
+        setLoading(false);
+        return;
+      }
+      // gcloud installed but not authenticated — try device flow
       setMethod('device');
       const data = await apiFetch('/api/setup/google/start', { method: 'POST' });
       if (data.error) throw new Error(data.error_description || data.error);
@@ -359,7 +365,18 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
           </div>
         ) : (
           <>
-            {!flowData && !polling && (
+            {gcloudMissing && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 space-y-2">
+                <p className="font-medium">gcloud not installed</p>
+                <p className="text-xs">Install Google Cloud SDK to enable Google Sheets access:</p>
+                <pre className="bg-amber-100 rounded px-3 py-2 text-xs font-mono overflow-x-auto">
+                  {`# macOS (Homebrew)\nbrew install --cask google-cloud-sdk\n\n# Then authenticate:\ngcloud auth login --enable-gdrive-access\ngcloud config set project gcp-sandbox-field-eng`}
+                </pre>
+                <p className="text-xs">After installing, click "Authorize with Google" again.</p>
+              </div>
+            )}
+
+            {!flowData && !polling && !gcloudMissing && (
               <>
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 {pollStatus === 'expired' && <p className="text-sm text-amber-600">Code expired. Try again.</p>}

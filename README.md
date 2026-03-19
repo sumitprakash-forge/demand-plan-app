@@ -12,6 +12,7 @@ A Databricks consumption planning and forecasting tool for Field Engineering. Lo
 | Node.js | 18+ | Frontend (React + Vite) |
 | Databricks CLI | Latest | Authenticated to Logfood workspace |
 | `databricks-sdk` | 0.33.0 | Installed via pip |
+| Google Cloud SDK (`gcloud`) | Latest | Required for Google Drive/Sheets access |
 
 ---
 
@@ -40,7 +41,41 @@ npm install
 cd ..
 ```
 
-### 4. Authenticate with Databricks (Logfood)
+### 4. Install & Authenticate Google Cloud SDK
+
+The app uses `gcloud` to access Google Sheets for domain mapping.
+
+**Install gcloud (macOS):**
+```bash
+brew install --cask google-cloud-sdk
+```
+
+**Install gcloud (macOS — without Homebrew):**
+```bash
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-darwin-arm.tar.gz
+tar -xf google-cloud-cli-darwin-arm.tar.gz
+./google-cloud-sdk/install.sh
+```
+
+**Install gcloud (Linux):**
+```bash
+curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
+tar -xf google-cloud-cli-linux-x86_64.tar.gz
+./google-cloud-sdk/install.sh
+```
+
+**Authenticate with your Databricks Google account:**
+```bash
+gcloud auth login --enable-gdrive-access
+gcloud config set project gcp-sandbox-field-eng
+```
+
+Verify it works:
+```bash
+gcloud auth print-access-token
+```
+
+### 5. Authenticate with Databricks (Logfood)
 
 The app queries Logfood for consumption data. Ensure the `logfood` profile is configured:
 
