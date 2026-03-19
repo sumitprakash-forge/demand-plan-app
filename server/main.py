@@ -750,15 +750,6 @@ async def get_account_overview(account: str = Query(default="Walmart")):
     }
 
 
-# ---------------------------------------------------------------------------
-# Serve frontend static files (after build)
-# ---------------------------------------------------------------------------
-
-FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
-if FRONTEND_DIST.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
-
-
 # ── Setup: status ──────────────────────────────────────────────────────────────
 @app.get("/api/setup/status")
 async def setup_status():
@@ -783,12 +774,21 @@ class DatabricksConfig(_BM):
 @app.post("/api/setup/databricks")
 async def save_databricks_config(cfg: DatabricksConfig):
     """Validate and save Databricks host + PAT token."""
-    from databricks.sdk import WorkspaceClient
+    import requests as _req
     host = cfg.host.rstrip("/")
     try:
-        w = WorkspaceClient(host=host, token=cfg.token)
-        # Validate by listing clusters (lightweight call)
-        list(w.clusters.list())[:1]
+        # Quick token validation via REST — much faster than SDK cluster list
+        r = _req.get(
+            f"{host}/api/2.0/token/list",
+            headers={"Authorization": f"Bearer {cfg.token}"},
+            timeout=10,
+        )
+        if r.status_code == 401:
+            raise HTTPException(status_code=400, detail="Invalid token — 401 Unauthorized")
+        if r.status_code not in (200, 403):  # 403 = valid token, no permission to list tokens
+            raise HTTPException(status_code=400, detail=f"Connection failed: HTTP {r.status_code}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
     _config["host"] = host
@@ -803,12 +803,18 @@ async def list_warehouses():
     """List available SQL warehouses in the configured workspace."""
     if not _config.get("host") or not _config.get("token"):
         raise HTTPException(status_code=400, detail="Databricks credentials not configured")
-    from databricks.sdk import WorkspaceClient
+    import requests as _req
     try:
-        w = WorkspaceClient(host=_config["host"], token=_config["token"])
+        r = _req.get(
+            f"{_config['host']}/api/2.0/sql/warehouses",
+            headers={"Authorization": f"Bearer {_config['token']}"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        data = r.json()
         warehouses = [
-            {"id": wh.id, "name": wh.name, "state": wh.state.value if wh.state else "UNKNOWN"}
-            for wh in w.warehouses.list()
+            {"id": wh["id"], "name": wh["name"], "state": wh.get("state", "UNKNOWN")}
+            for wh in data.get("warehouses", [])
         ]
         return {"warehouses": warehouses}
     except Exception as e:
@@ -866,6 +872,15 @@ async def accounts_search(q: str = Query(default="")):
         return {"accounts": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Serve frontend static files (must be LAST — catches all unmatched routes)
+# ---------------------------------------------------------------------------
+
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+if FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
 
 
 if __name__ == "__main__":
