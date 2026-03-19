@@ -498,6 +498,7 @@ function AccountPickerStep({
       setAccounts([...filtered, ...newAccounts]);
     }
     setSelected(new Set());
+    setResults([]);
   };
 
   return (
@@ -546,14 +547,25 @@ function AccountPickerStep({
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <div className="bg-slate-50 px-3 py-2 flex items-center justify-between border-b border-slate-200">
                   <span className="text-xs font-medium text-slate-500">{results.length} results</span>
-                  {selected.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    {selected.size > 0 && (
+                      <button
+                        onClick={handleAddAccounts}
+                        className="text-xs px-3 py-1 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700"
+                      >
+                        Add {selected.size} account{selected.size > 1 ? 's' : ''} →
+                      </button>
+                    )}
                     <button
-                      onClick={handleAddAccounts}
-                      className="text-xs px-3 py-1 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700"
+                      onClick={() => { setResults([]); setSelected(new Set()); }}
+                      className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                      title="Close results"
                     >
-                      Add {selected.size} account{selected.size > 1 ? 's' : ''} →
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
-                  )}
+                  </div>
                 </div>
                 <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
                   {results.map(r => {
