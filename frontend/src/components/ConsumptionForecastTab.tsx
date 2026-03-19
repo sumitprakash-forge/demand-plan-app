@@ -22,6 +22,13 @@ interface ForecastData {
   baseline_growth: number;
 }
 
+interface SKUAllocation {
+  sku: string;
+  percentage: number;
+  dbus: number;
+  dollarDbu: number;
+}
+
 interface UseCase {
   id: string;
   name: string;
@@ -31,6 +38,7 @@ interface UseCase {
   liveMonth: number;
   rampType: string;
   scenarios: [boolean, boolean, boolean];
+  skuBreakdown?: SKUAllocation[];
 }
 
 interface ScenarioData {
@@ -124,6 +132,15 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const [saving, setSaving] = useState(false);
   const [months, setMonths] = useState(24);
   const [conflictAccount, setConflictAccount] = useState<string | null>(null);
+  const [expandedUCIds, setExpandedUCIds] = useState<Set<string>>(new Set());
+
+  const toggleUCExpand = (id: string) => {
+    setExpandedUCIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const activeAccounts = accounts.filter(a => a.name);
 
@@ -406,6 +423,12 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                       <span className="inline-block w-3 h-3 rounded-sm bg-green-200 border border-green-500" />
                       Goes live (steady state)
                     </span>
+                    <span className="flex items-center gap-1.5 text-slate-400">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      Click arrow on use cases to expand SKU breakdown
+                    </span>
                   </div>
                 )}
 
@@ -429,28 +452,72 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         const om = row.onboarding_month;
                         const lm = row.live_month;
 
+                        // Find matching UC for SKU breakdown
+                        const ucData = !isBaseline
+                          ? (scenarioData[acc.name]?.new_use_cases || []).find(u => u.id === row.id)
+                          : null;
+                        const skus = ucData?.skuBreakdown?.filter(a => a.percentage > 0) || [];
+                        const hasSkus = skus.length > 0;
+                        const isExpanded = expandedUCIds.has(row.id);
+
                         return (
-                          <tr
-                            key={row.id}
-                            className={`border-b border-slate-100 ${
-                              isBaseline
-                                ? 'bg-slate-50 font-medium'
-                                : ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'
-                            } hover:bg-blue-50/30 transition-colors`}
-                          >
-                            <td className={`px-3 py-1.5 font-medium sticky left-0 z-10 border-r border-slate-100 ${isBaseline ? 'bg-slate-50 text-slate-800' : 'bg-white text-slate-700'}`}>
-                              {!isBaseline && <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${colors.bg}`} />}
-                              {row.label}
-                            </td>
-                            <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">{row.domain}</td>
-                            {row.values.map((v, i) => {
-                              const monthNum = i + 1;
-                              const highlight = !isBaseline
-                                ? (monthNum === om ? 'onboarding' : monthNum === lm ? 'live' : null)
-                                : null;
-                              return <CellValue key={i} value={v} highlight={highlight} />;
-                            })}
-                          </tr>
+                          <React.Fragment key={row.id}>
+                            <tr
+                              className={`border-b border-slate-100 ${
+                                isBaseline
+                                  ? 'bg-slate-50 font-medium'
+                                  : ri % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'
+                              } hover:bg-blue-50/30 transition-colors`}
+                            >
+                              <td className={`px-3 py-1.5 font-medium sticky left-0 z-10 border-r border-slate-100 ${isBaseline ? 'bg-slate-50 text-slate-800' : 'bg-white text-slate-700'}`}>
+                                <div className="flex items-center gap-1.5">
+                                  {!isBaseline && <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.bg}`} />}
+                                  <span className="flex-1">{row.label}</span>
+                                  {hasSkus && (
+                                    <button
+                                      onClick={() => toggleUCExpand(row.id)}
+                                      className="flex-shrink-0 text-slate-400 hover:text-slate-700 transition-colors"
+                                      title={isExpanded ? 'Hide SKU breakdown' : 'Show SKU breakdown'}
+                                    >
+                                      <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">{row.domain}</td>
+                              {row.values.map((v, i) => {
+                                const monthNum = i + 1;
+                                const highlight = !isBaseline
+                                  ? (monthNum === om ? 'onboarding' : monthNum === lm ? 'live' : null)
+                                  : null;
+                                return <CellValue key={i} value={v} highlight={highlight} />;
+                              })}
+                            </tr>
+
+                            {/* SKU breakdown sub-rows */}
+                            {hasSkus && isExpanded && skus.map((alloc, si) => (
+                              <tr key={`${row.id}-sku-${si}`} className="border-b border-slate-100 bg-slate-50/60">
+                                <td className="pl-8 pr-3 py-1 sticky left-0 z-10 bg-slate-50/60 border-r border-slate-100">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
+                                    <span className="text-slate-500 text-[11px] font-normal">{alloc.sku}</span>
+                                    <span className="text-[10px] text-slate-400 ml-auto">{alloc.percentage}%</span>
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1 text-slate-300 text-[11px]">—</td>
+                                {row.values.map((v, i) => {
+                                  const skuVal = v * alloc.percentage / 100;
+                                  return (
+                                    <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
+                                      {skuVal > 0 ? formatCurrency(skuVal) : <span className="text-slate-200">—</span>}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </React.Fragment>
                         );
                       })}
 
