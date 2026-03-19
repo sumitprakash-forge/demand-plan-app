@@ -5,6 +5,7 @@ import ScenarioTab from './components/ScenarioTab';
 // ForecastTab removed
 import OverviewTab from './components/OverviewTab';
 import ConsumptionForecastTab from './components/ConsumptionForecastTab';
+import SetupTab from './components/SetupTab';
 import { exportToXLS } from './export';
 import { exportToExcelJS } from './exportExcelJS';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
@@ -17,6 +18,7 @@ export interface AccountConfig {
 }
 
 const TABS = [
+  { id: 'setup', label: 'Setup' },
   { id: 'summary', label: 'Demand Plan Summary' },
   { id: 'historical', label: 'Historical Consumption (T12M)' },
   { id: 'scenario', label: 'Scenario Builder' },
@@ -439,6 +441,7 @@ export default function App() {
 
       {/* Tab Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {activeTab === 'setup' && <SetupTab accounts={accounts} setAccounts={setAccounts} />}
         {activeTab === 'summary' && <SummaryTab accounts={accounts} setAccounts={setAccounts} />}
         {activeTab === 'historical' && <HistoricalTab accounts={accounts} />}
         {activeTab === 'scenario' && <ScenarioTab accounts={accounts} />}

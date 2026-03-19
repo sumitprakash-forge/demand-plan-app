@@ -38,6 +38,14 @@ LIMIT 5
 """
 
 
+def _get_client(host: str = "", token: str = ""):
+    """Return a WorkspaceClient using host+token if provided, else profile='logfood'."""
+    from databricks.sdk import WorkspaceClient
+    if host and token:
+        return WorkspaceClient(host=host, token=token)
+    return WorkspaceClient(profile="logfood")
+
+
 def _build_account_filter(account: str) -> str:
     """Build SQL filter — detects if input is SFDC account ID (18-char alphanumeric) or name."""
     account = account.strip()
@@ -48,21 +56,19 @@ def _build_account_filter(account: str) -> str:
         return f"sfdc_account_name = '{account}'"
 
 
-def query_consumption(account: str = "Walmart") -> list[dict]:
+def query_consumption(account: str = "Walmart", host: str = "", token: str = "", warehouse_id: str = "") -> list[dict]:
     """
     Query Logfood for trailing 12 months consumption.
     Accepts either SFDC account name or SFDC account ID (auto-detected).
     """
-    from databricks.sdk import WorkspaceClient
-
-    w = WorkspaceClient(profile="logfood")
-    warehouse_id = "071969b1ec9a91ca"
+    w = _get_client(host, token)
+    wh_id = warehouse_id if warehouse_id else "071969b1ec9a91ca"
 
     account_filter = _build_account_filter(account)
     sql = CONSUMPTION_SQL.format(account_filter=account_filter)
 
     result = w.statement_execution.execute_statement(
-        warehouse_id=warehouse_id,
+        warehouse_id=wh_id,
         statement=sql,
         wait_timeout="50s",
     )
@@ -95,30 +101,29 @@ def query_consumption(account: str = "Walmart") -> list[dict]:
     return rows
 
 
-def query_sku_prices(account: str = "Walmart") -> list[dict]:
+def query_sku_prices(account: str = "Walmart", host: str = "", token: str = "", warehouse_id: str = "") -> list[dict]:
     """
     Query Logfood for distinct SKU + cloud + list_price (last 90 days).
     Returns list of dicts with keys: sku, cloud, list_price
     """
-    from databricks.sdk import WorkspaceClient
+    w = _get_client(host, token)
 
-    w = WorkspaceClient(profile="logfood")
-
-    warehouse_id = "071969b1ec9a91ca"
-    try:
-        warehouses = list(w.warehouses.list())
-        for wh in warehouses:
-            if wh.state and wh.state.value == "RUNNING":
-                warehouse_id = wh.id
-                break
-    except Exception:
-        pass
+    wh_id = warehouse_id if warehouse_id else "071969b1ec9a91ca"
+    if not warehouse_id:
+        try:
+            warehouses = list(w.warehouses.list())
+            for wh in warehouses:
+                if wh.state and wh.state.value == "RUNNING":
+                    wh_id = wh.id
+                    break
+        except Exception:
+            pass
 
     account_filter = _build_account_filter(account)
     sql = SKU_PRICES_SQL.format(account_filter=account_filter)
 
     result = w.statement_execution.execute_statement(
-        warehouse_id=warehouse_id,
+        warehouse_id=wh_id,
         statement=sql,
         wait_timeout="50s",
     )
@@ -144,6 +149,50 @@ def query_sku_prices(account: str = "Walmart") -> list[dict]:
             if col_name == "list_price" and val is not None:
                 val = float(val)
             row[col_name] = val
+        rows.append(row)
+
+    return rows
+
+
+def search_accounts(query: str, host: str, token: str, warehouse_id: str) -> list[dict]:
+    """
+    Search for accounts by name or ID (last 90 days).
+    Returns list of dicts with keys: sfdc_account_name, sfdc_account_id
+    """
+    w = _get_client(host, token)
+    query = query.strip()
+
+    sql = f"""
+SELECT DISTINCT sfdc_account_name, sfdc_account_id
+FROM main.fin_live_gold.paid_usage_metering
+WHERE date >= date_add(current_date(), -90)
+  AND (sfdc_account_name ILIKE '%{query}%' OR sfdc_account_id ILIKE '%{query}%')
+ORDER BY sfdc_account_name
+LIMIT 50
+"""
+
+    result = w.statement_execution.execute_statement(
+        warehouse_id=warehouse_id,
+        statement=sql,
+        wait_timeout="50s",
+    )
+
+    if result.status and result.status.state and result.status.state.value in ("PENDING", "RUNNING"):
+        import time as _time
+        stmt_id = result.statement_id
+        for _ in range(60):
+            _time.sleep(5)
+            result = w.statement_execution.get_statement(stmt_id)
+            if result.status.state.value in ("SUCCEEDED", "FAILED", "CANCELED", "CLOSED"):
+                break
+
+    if not result.result or not result.result.data_array:
+        return []
+
+    columns = [col.name for col in result.manifest.schema.columns]
+    rows = []
+    for row_data in result.result.data_array:
+        row = {col_name: row_data[i] for i, col_name in enumerate(columns)}
         rows.append(row)
 
     return rows

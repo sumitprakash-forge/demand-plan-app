@@ -43,6 +43,19 @@ _forecast_overrides: dict[str, list[dict]] = {}
 _sku_price_cache: dict[str, list[dict]] = {}
 
 
+# Runtime config (credentials, warehouse) — persisted to config.json
+_config: dict = {}
+
+def _load_config():
+    global _config
+    data = _load_json("config")
+    if data and isinstance(data, dict):
+        _config = data
+
+def _save_config():
+    _save_json("config", _config)
+
+
 def _preload_caches():
     """Preload all JSON file caches into memory on startup."""
     count = 0
@@ -84,6 +97,9 @@ def _load_json(name: str) -> dict | list | None:
 
 def _save_json(name: str, data):
     (DATA_DIR / f"{name}.json").write_text(json.dumps(data, default=str, indent=2))
+
+
+_load_config()
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +146,10 @@ async def get_consumption(account: str = Query(default="Walmart"), refresh: bool
     # 3. Query Logfood async (slow, only when no cache or refresh=true)
     try:
         loop = asyncio.get_event_loop()
-        rows = await loop.run_in_executor(_executor, query_consumption, account)
+        rows = await loop.run_in_executor(
+            _executor,
+            lambda: query_consumption(account, host=_config.get("host",""), token=_config.get("token",""), warehouse_id=_config.get("warehouse_id","")),
+        )
         _consumption_cache[account] = rows
         _save_json(f"consumption_{account}", rows)
         return {"data": rows, "source": "logfood"}
@@ -185,7 +204,7 @@ async def get_sku_prices(account: str = Query(default="Walmart")):
             _sku_price_cache[account] = raw_rows
         else:
             try:
-                raw_rows = query_sku_prices(account)
+                raw_rows = query_sku_prices(account, host=_config.get("host",""), token=_config.get("token",""), warehouse_id=_config.get("warehouse_id",""))
                 _sku_price_cache[account] = raw_rows
                 _save_json(f"sku_prices_{account}", raw_rows)
             except Exception as e:
@@ -268,7 +287,10 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
     if not consumption:
         try:
             loop = asyncio.get_event_loop()
-            consumption = await loop.run_in_executor(_executor, query_consumption, account)
+            consumption = await loop.run_in_executor(
+                _executor,
+                lambda: query_consumption(account, host=_config.get("host",""), token=_config.get("token",""), warehouse_id=_config.get("warehouse_id","")),
+            )
             _consumption_cache[account] = consumption
             _save_json(f"consumption_{account}", consumption)
         except Exception as e:
@@ -735,6 +757,115 @@ async def get_account_overview(account: str = Query(default="Walmart")):
 FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 if FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIST), html=True), name="frontend")
+
+
+# ── Setup: status ──────────────────────────────────────────────────────────────
+@app.get("/api/setup/status")
+async def setup_status():
+    """Return which setup steps are complete."""
+    from sheets import get_stored_google_token
+    google_ok = get_stored_google_token() is not None
+    return {
+        "databricks": bool(_config.get("host") and _config.get("token")),
+        "google": google_ok,
+        "warehouse_id": _config.get("warehouse_id", ""),
+        "host": _config.get("host", ""),
+    }
+
+# ── Setup: Databricks credentials ──────────────────────────────────────────────
+from pydantic import BaseModel as _BM
+
+class DatabricksConfig(_BM):
+    host: str
+    token: str
+    warehouse_id: str = ""
+
+@app.post("/api/setup/databricks")
+async def save_databricks_config(cfg: DatabricksConfig):
+    """Validate and save Databricks host + PAT token."""
+    from databricks.sdk import WorkspaceClient
+    host = cfg.host.rstrip("/")
+    try:
+        w = WorkspaceClient(host=host, token=cfg.token)
+        # Validate by listing clusters (lightweight call)
+        list(w.clusters.list())[:1]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
+    _config["host"] = host
+    _config["token"] = cfg.token
+    if cfg.warehouse_id:
+        _config["warehouse_id"] = cfg.warehouse_id
+    _save_config()
+    return {"status": "ok", "host": host}
+
+@app.get("/api/setup/warehouses")
+async def list_warehouses():
+    """List available SQL warehouses in the configured workspace."""
+    if not _config.get("host") or not _config.get("token"):
+        raise HTTPException(status_code=400, detail="Databricks credentials not configured")
+    from databricks.sdk import WorkspaceClient
+    try:
+        w = WorkspaceClient(host=_config["host"], token=_config["token"])
+        warehouses = [
+            {"id": wh.id, "name": wh.name, "state": wh.state.value if wh.state else "UNKNOWN"}
+            for wh in w.warehouses.list()
+        ]
+        return {"warehouses": warehouses}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/setup/warehouse")
+async def save_warehouse(data: dict):
+    """Save selected warehouse ID."""
+    _config["warehouse_id"] = data.get("warehouse_id", "")
+    _save_config()
+    return {"status": "ok"}
+
+# ── Setup: Google OAuth device flow ────────────────────────────────────────────
+@app.post("/api/setup/google/start")
+async def google_oauth_start():
+    """Start Google OAuth 2.0 device flow."""
+    from sheets import start_device_flow
+    try:
+        result = await start_device_flow()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/setup/google/poll")
+async def google_oauth_poll(device_code: str = Query(...)):
+    """Poll for device flow completion."""
+    from sheets import poll_device_flow
+    result = await poll_device_flow(device_code)
+    return result
+
+@app.delete("/api/setup/google")
+async def google_disconnect():
+    """Remove stored Google tokens."""
+    from sheets import clear_google_tokens
+    clear_google_tokens()
+    return {"status": "ok"}
+
+# ── Account search ──────────────────────────────────────────────────────────────
+@app.get("/api/accounts-search")
+async def accounts_search(q: str = Query(default="")):
+    """Search Logfood for accounts matching query."""
+    if not _config.get("host") or not _config.get("token"):
+        raise HTTPException(status_code=400, detail="Databricks credentials not configured. Complete setup first.")
+    from logfood import search_accounts
+    try:
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            _executor,
+            search_accounts,
+            q,
+            _config["host"],
+            _config["token"],
+            _config.get("warehouse_id", ""),
+        )
+        return {"accounts": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
