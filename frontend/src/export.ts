@@ -110,8 +110,18 @@ function buildProjectionSheet(wb: XLSX.WorkBook, sd: ScenarioExportData) {
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export async function exportToXLS(opts: ExportOptions) {
+  // Fall back to first accountsData entry for legacy flat fields
+  const firstAd = opts.accountsData?.[0];
+  const historicalData = opts.historicalData ?? firstAd?.historicalData ?? [];
+  const domainMapping  = opts.domainMapping  ?? firstAd?.domainMapping  ?? {};
+  const wsCloud        = opts.wsCloud        ?? firstAd?.wsCloud        ?? {};
+  const wsOrg          = opts.wsOrg          ?? firstAd?.wsOrg          ?? {};
+  const domainBaselines = opts.domainBaselines ?? firstAd?.domainBaselines ?? [];
+  const allUseCases    = opts.allUseCases    ?? firstAd?.allUseCases    ?? [];
+  const scenariosData  = opts.scenariosData  ?? firstAd?.scenariosData  ?? [];
+
   const wb = XLSX.utils.book_new();
-  const months = [...new Set(opts.historicalData.map(r => r.month))].sort();
+  const months = [...new Set(historicalData.map((r: any) => r.month))].sort();
 
   // ── Sheet 1: Demand Plan Summary ──
   const allAccountSummaries: Record<string, any> = {};
@@ -177,8 +187,8 @@ export async function exportToXLS(opts: ExportOptions) {
 
   // ── Sheet 2: Historical by Domain ──
   const domainMonthly: Record<string, Record<string, number>> = {};
-  opts.historicalData.forEach(row => {
-    const domain = opts.domainMapping[row.workspace_name] || 'Unmapped';
+  historicalData.forEach(row => {
+    const domain = domainMapping[row.workspace_name] || 'Unmapped';
     const dbu = parseFloat(row.dollar_dbu_list) || 0;
     if (!domainMonthly[domain]) domainMonthly[domain] = {};
     domainMonthly[domain][row.month] = (domainMonthly[domain][row.month] || 0) + dbu;
@@ -199,7 +209,7 @@ export async function exportToXLS(opts: ExportOptions) {
 
   // ── Sheet 3: Historical by SKU ──
   const skuMonthly: Record<string, Record<string, number>> = {};
-  opts.historicalData.forEach(row => {
+  historicalData.forEach(row => {
     const sku = row.sku || row.sku_name || 'Unknown';
     const dbu = parseFloat(row.dollar_dbu_list) || 0;
     if (!skuMonthly[sku]) skuMonthly[sku] = {};
@@ -222,9 +232,9 @@ export async function exportToXLS(opts: ExportOptions) {
   // ── Sheet 4: Cloud → Domain → SKU ──
   const cdsRows: any[][] = [['Cloud', 'Domain', 'SKU', ...months, 'Total']];
   const cloudData: Record<string, Record<string, Record<string, Record<string, number>>>> = {};
-  opts.historicalData.forEach(row => {
-    const cloud = opts.wsCloud[row.workspace_name] || 'unknown';
-    const domain = opts.domainMapping[row.workspace_name] || 'Unmapped';
+  historicalData.forEach(row => {
+    const cloud = wsCloud[row.workspace_name] || 'unknown';
+    const domain = domainMapping[row.workspace_name] || 'Unmapped';
     const sku = row.sku || row.sku_name || 'Unknown';
     const dbu = parseFloat(row.dollar_dbu_list) || 0;
     if (!cloudData[cloud]) cloudData[cloud] = {};
@@ -259,7 +269,7 @@ export async function exportToXLS(opts: ExportOptions) {
   XLSX.utils.book_append_sheet(wb, ws4, 'Cloud-Domain-SKU');
 
   // ── Sheets 5-7: One horizontal projection sheet per scenario ──
-  for (const sd of opts.scenariosData) {
+  for (const sd of scenariosData) {
     buildProjectionSheet(wb, sd);
   }
 
@@ -269,7 +279,7 @@ export async function exportToXLS(opts: ExportOptions) {
     [''],
     ['Name', 'Domain', 'Steady-State $/mo', 'Onboarding Month', 'Live Month', 'Ramp Type', 'S1', 'S2', 'S3', 'Year 1', 'Year 2', 'Year 3', 'Total'],
   ];
-  opts.allUseCases.forEach(uc => {
+  allUseCases.forEach(uc => {
     const yT = [0, 0, 0];
     uc.monthlyProjection.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
     ucRows.push([
@@ -291,8 +301,8 @@ export async function exportToXLS(opts: ExportOptions) {
     ['Domain Baseline Summary'], [''],
     ['Domain', 'T12M $DBU', 'Avg Monthly', '% of Total'],
   ];
-  const totalBL = opts.domainBaselines.reduce((s, b) => s + b.t12m, 0);
-  opts.domainBaselines.forEach(b => {
+  const totalBL = domainBaselines.reduce((s, b) => s + b.t12m, 0);
+  domainBaselines.forEach(b => {
     blRows.push([b.domain, b.t12m, b.avgMonthly, totalBL > 0 ? b.t12m / totalBL : 0]);
   });
   blRows.push(['Grand Total', totalBL, totalBL / 12, 1]);
@@ -307,7 +317,7 @@ export async function exportToXLS(opts: ExportOptions) {
     ['Use Case SKU Breakdown'], [''],
     ['Use Case Name', 'SKU', 'Cloud', '% Split', 'DBUs/mo', '$/DBU', '$/month', 'Assumptions'],
   ];
-  opts.allUseCases.forEach(uc => {
+  allUseCases.forEach(uc => {
     if (!uc.skuBreakdown?.length) return;
     uc.skuBreakdown.forEach((alloc, idx) => {
       const price = alloc.dbus > 0 ? alloc.dollarDbu / alloc.dbus : 0;

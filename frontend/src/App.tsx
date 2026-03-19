@@ -122,48 +122,85 @@ export default function App() {
 
   // Shared data-fetch + projection builder used by both export handlers
   const buildExportPayload = useCallback(async () => {
-    const account = accounts[0]?.sfdc_id || 'Unknown';
-    const sheetUrl = accounts[0]?.sheetUrl || '';
+    const activeAccounts = accounts.filter(a => a.name.trim() || a.sfdc_id.trim());
 
-    const [consumptionRes, mappingRes, s1Res, s2Res, s3Res] = await Promise.all([
-      fetchConsumption(account),
-      sheetUrl ? fetchDomainMapping(sheetUrl) : Promise.resolve({ mapping: [] }),
-      fetchScenario(account, 1),
-      fetchScenario(account, 2),
-      fetchScenario(account, 3),
-    ]);
+    const buildAccountData = async (acct: AccountConfig) => {
+      const accountId = acct.sfdc_id || acct.name;
+      const sheetUrl = acct.sheetUrl || '';
 
-    const historicalData = consumptionRes.data || [];
-    const domainMapping: Record<string, string> = {};
-    const wsCloud: Record<string, string> = {};
-    const wsOrg: Record<string, string> = {};
-    (mappingRes.mapping || []).forEach((r: any) => {
-      domainMapping[r.workspace] = r.domain;
-      if (r.cloudtype) wsCloud[r.workspace] = r.cloudtype;
-      if (r.org) wsOrg[r.workspace] = r.org;
-    });
+      const [consumptionRes, mappingRes, s1Res, s2Res, s3Res] = await Promise.all([
+        fetchConsumption(accountId),
+        sheetUrl ? fetchDomainMapping(sheetUrl) : Promise.resolve({ mapping: [] }),
+        fetchScenario(accountId, 1),
+        fetchScenario(accountId, 2),
+        fetchScenario(accountId, 3),
+      ]);
 
-    const domMonthly: Record<string, Record<string, number>> = {};
-    historicalData.forEach((row: any) => {
-      const domain = domainMapping[row.workspace_name] || 'Unmapped';
-      if (!domMonthly[domain]) domMonthly[domain] = {};
-      domMonthly[domain][row.month] = (domMonthly[domain][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
-    });
-    const domainBaselines = Object.entries(domMonthly).map(([domain, mData]) => {
-      const t12m = Object.values(mData).reduce((s, v) => s + v, 0);
-      return { domain, t12m, avgMonthly: t12m / Math.max(Object.keys(mData).length, 1) };
-    }).sort((a, b) => b.t12m - a.t12m);
+      const historicalData = consumptionRes.data || [];
+      const domainMapping: Record<string, string> = {};
+      const wsCloud: Record<string, string> = {};
+      const wsOrg: Record<string, string> = {};
+      (mappingRes.mapping || []).forEach((r: any) => {
+        domainMapping[r.workspace] = r.domain;
+        if (r.cloudtype) wsCloud[r.workspace] = r.cloudtype;
+        if (r.org) wsOrg[r.workspace] = r.org;
+      });
 
-    const totalBaseMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
+      const domMonthly: Record<string, Record<string, number>> = {};
+      historicalData.forEach((row: any) => {
+        const domain = domainMapping[row.workspace_name] || 'Unmapped';
+        if (!domMonthly[domain]) domMonthly[domain] = {};
+        domMonthly[domain][row.month] = (domMonthly[domain][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
+      });
+      const domainBaselines = Object.entries(domMonthly).map(([domain, mData]) => {
+        const t12m = Object.values(mData).reduce((s, v) => s + v, 0);
+        return { domain, t12m, avgMonthly: t12m / Math.max(Object.keys(mData).length, 1) };
+      }).sort((a, b) => b.t12m - a.t12m);
 
-    const scenarioRess = [s1Res, s2Res, s3Res];
-    const scenariosData = ([1, 2, 3] as const).map((sNum, idx) => {
-      const sr = scenarioRess[idx];
-      const growthRate = sr.baseline_growth_rate || 0.02;
-      const momRate = growthRate / 12;
-      const baselineMonths = Array.from({ length: 36 }, (_, i) => totalBaseMonthly * Math.pow(1 + momRate, i + 1));
+      const totalBaseMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
 
-      const allUCs = (sr.new_use_cases || []).map((uc: any) => ({
+      const scenarioRess = [s1Res, s2Res, s3Res];
+      const scenariosData = ([1, 2, 3] as const).map((sNum, idx) => {
+        const sr = scenarioRess[idx];
+        const growthRate = sr.baseline_growth_rate || 0.02;
+        const momRate = growthRate / 12;
+        const baselineMonths = Array.from({ length: 36 }, (_, i) => totalBaseMonthly * Math.pow(1 + momRate, i + 1));
+
+        const allUCs = (sr.new_use_cases || []).map((uc: any) => ({
+          ...uc,
+          steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
+          onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
+          liveMonth: uc.liveMonth || uc.live_month || 6,
+          rampType: uc.rampType || uc.ramp_type || 'linear',
+          scenarios: uc.scenarios || [true, false, false],
+          monthlyProjection: calcUseCaseMonthly(uc),
+        }));
+        const activeUseCases = allUCs.filter((uc: any) => uc.scenarios[sNum - 1]);
+
+        const ucMonths = new Array(36).fill(0);
+        activeUseCases.forEach((uc: any) => {
+          uc.monthlyProjection.forEach((v: number, i: number) => { ucMonths[i] += v; });
+        });
+
+        const totalMonths = baselineMonths.map((b, i) => b + ucMonths[i]);
+        const baseYearTotals = [0, 0, 0], ucYearTotals = [0, 0, 0], yearTotals = [0, 0, 0];
+        for (let i = 0; i < 36; i++) {
+          const y = Math.floor(i / 12);
+          baseYearTotals[y] += baselineMonths[i];
+          ucYearTotals[y] += ucMonths[i];
+          yearTotals[y] += totalMonths[i];
+        }
+
+        return {
+          scenarioNum: sNum,
+          assumptions: sr.assumptions_text || '',
+          baselineGrowthRate: growthRate * 100,
+          activeUseCases,
+          baselineMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals,
+        };
+      });
+
+      const allUseCases = (s1Res.new_use_cases || []).map((uc: any) => ({
         ...uc,
         steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
         onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
@@ -172,43 +209,13 @@ export default function App() {
         scenarios: uc.scenarios || [true, false, false],
         monthlyProjection: calcUseCaseMonthly(uc),
       }));
-      const activeUseCases = allUCs.filter((uc: any) => uc.scenarios[sNum - 1]);
 
-      const ucMonths = new Array(36).fill(0);
-      activeUseCases.forEach((uc: any) => {
-        uc.monthlyProjection.forEach((v: number, i: number) => { ucMonths[i] += v; });
-      });
+      return { accountName: acct.name, historicalData, domainMapping, wsCloud, wsOrg, domainBaselines, allUseCases, scenariosData };
+    };
 
-      const totalMonths = baselineMonths.map((b, i) => b + ucMonths[i]);
-      const baseYearTotals = [0, 0, 0], ucYearTotals = [0, 0, 0], yearTotals = [0, 0, 0];
-      for (let i = 0; i < 36; i++) {
-        const y = Math.floor(i / 12);
-        baseYearTotals[y] += baselineMonths[i];
-        ucYearTotals[y] += ucMonths[i];
-        yearTotals[y] += totalMonths[i];
-      }
-
-      return {
-        scenarioNum: sNum,
-        assumptions: sr.assumptions_text || '',
-        baselineGrowthRate: growthRate * 100,
-        activeUseCases,
-        baselineMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals,
-      };
-    });
-
-    // allUseCases: use S1's list (most complete — others copy from it)
-    const allUseCases = (s1Res.new_use_cases || []).map((uc: any) => ({
-      ...uc,
-      steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
-      onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
-      liveMonth: uc.liveMonth || uc.live_month || 6,
-      rampType: uc.rampType || uc.ramp_type || 'linear',
-      scenarios: uc.scenarios || [true, false, false],
-      monthlyProjection: calcUseCaseMonthly(uc),
-    }));
-
-    return { account, historicalData, domainMapping, wsCloud, wsOrg, domainBaselines, allUseCases, scenariosData };
+    const accountsData = await Promise.all(activeAccounts.map(buildAccountData));
+    const account = activeAccounts[0]?.name || 'Unknown';
+    return { account, accountsData };
   }, [accounts]);
 
   const handleExportFormatted = useCallback(async () => {

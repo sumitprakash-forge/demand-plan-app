@@ -22,25 +22,38 @@ export interface UseCase {
 export interface ScenarioExportData {
   scenarioNum: 1 | 2 | 3;
   assumptions: string;
-  baselineGrowthRate: number; // e.g. 2.0 = 2% MoM
+  baselineGrowthRate: number;
   activeUseCases: UseCase[];
-  baselineMonths: number[];   // length 36
-  totalMonths: number[];      // length 36
-  baseYearTotals: number[];   // length 3
-  ucYearTotals: number[];     // length 3
-  yearTotals: number[];       // length 3
+  baselineMonths: number[];
+  totalMonths: number[];
+  baseYearTotals: number[];
+  ucYearTotals: number[];
+  yearTotals: number[];
 }
 
-export interface ExportOptions {
-  accounts: AccountConfig[];
-  account: string;
+export interface AccountExportData {
+  accountName: string;
   historicalData: any[];
   domainMapping: Record<string, string>;
   wsCloud: Record<string, string>;
   wsOrg: Record<string, string>;
   domainBaselines: { domain: string; t12m: number; avgMonthly: number }[];
-  allUseCases: UseCase[];        // all UCs (unfiltered) for Use Case Details + SKU Breakdown
+  allUseCases: UseCase[];
   scenariosData: ScenarioExportData[];
+}
+
+export interface ExportOptions {
+  accounts: AccountConfig[];
+  account: string;
+  accountsData: AccountExportData[];
+  // Legacy single-account fields (ignored when accountsData present)
+  historicalData?: any[];
+  domainMapping?: Record<string, string>;
+  wsCloud?: Record<string, string>;
+  wsOrg?: Record<string, string>;
+  domainBaselines?: { domain: string; t12m: number; avgMonthly: number }[];
+  allUseCases?: UseCase[];
+  scenariosData?: ScenarioExportData[];
 }
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -133,25 +146,31 @@ function addSheetTitle(ws: ExcelJS.Worksheet, title: string, subtitle: string, c
   ws.addRow([]);
 }
 
-// ─── Projection sheet (HORIZONTAL) ───────────────────────────────────────────
-// Rows = use cases, Columns = M1 … M36 + Y1/Y2/Y3/Grand Total
+// Safe Excel sheet name: max 31 chars, no illegal chars
+function safeName(accountName: string, suffix: string): string {
+  const clean = accountName.replace(/[\\\/\?\*\[\]:]/g, '').trim();
+  const max = 31 - suffix.length;
+  return clean.slice(0, max) + suffix;
+}
 
-function buildProjectionSheet(wb: ExcelJS.Workbook, sd: ScenarioExportData) {
-  const { scenarioNum, assumptions, baselineGrowthRate, activeUseCases,
-          baselineMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals } = sd;
+// ─── Projection sheet (multi-account, horizontal) ─────────────────────────────
+// One sheet per scenario, all accounts as sections with SKU breakdown
 
+function buildProjectionSheetMulti(
+  wb: ExcelJS.Workbook,
+  scenarioNum: 1 | 2 | 3,
+  accountsData: AccountExportData[]
+) {
   const sc = SCENARIO_COLORS[scenarioNum];
-  const sheetName = `S${scenarioNum} — Projection`;
+  const totalCols = 1 + 36 + 4;
 
-  const ws = wb.addWorksheet(sheetName, {
+  const ws = wb.addWorksheet(`S${scenarioNum} — Projection`, {
     properties: { tabColor: { argb: 'FF' + sc.bg } },
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
   });
 
-  // Column defs: label col + M1-M36 + Y1 + Y2 + Y3 + Grand
-  const totalCols = 1 + 36 + 4;
   ws.columns = [
-    { key: 'label', width: 36 },
+    { key: 'label', width: 40 },
     ...Array.from({ length: 36 }, (_, i) => ({ key: `m${i + 1}`, width: 9 })),
     { key: 'y1', width: 14 },
     { key: 'y2', width: 14 },
@@ -162,11 +181,11 @@ function buildProjectionSheet(wb: ExcelJS.Workbook, sd: ScenarioExportData) {
   addSheetTitle(
     ws,
     `Scenario ${scenarioNum}  ·  36-Month Projection`,
-    `Baseline growth: ${baselineGrowthRate.toFixed(1)}% MoM${assumptions ? '  ·  ' + assumptions : ''}`,
+    `All accounts combined  ·  Databricks List Price`,
     totalCols
   );
 
-  // Month header row: blank label | M1(Y1) … M12(Y1) | M13(Y2) … | Year totals
+  // Month header row
   const monthLabels = Array.from({ length: 36 }, (_, i) => {
     const yr = Math.floor(i / 12) + 1;
     const mo = (i % 12) + 1;
@@ -181,20 +200,16 @@ function buildProjectionSheet(wb: ExcelJS.Workbook, sd: ScenarioExportData) {
       alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
       border: { right: { style: 'hair', color: rgb('AAAAAA') } },
     };
-    // Year-total columns get slightly lighter shade
     if (colNum > 37) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('2D4E8A') };
       cell.font = { bold: true, color: rgb(HEADER_FG), size: 9, name: 'Calibri' };
     }
   });
-
-  // Add thin right border between years (after col 13, 25, 37)
   [13, 25, 37].forEach(col => {
-    const c = hrow.getCell(col + 1); // +1 because col 1 is label
+    const c = hrow.getCell(col + 1);
     c.border = { ...c.border, right: { style: 'medium', color: rgb('FFFFFF') } };
   });
 
-  // Helper: build a data row [label, m1..m36, y1, y2, y3, grand]
   const ucYearSlice = (vals: number[], yr: number) =>
     vals.slice(yr * 12, (yr + 1) * 12).reduce((s, v) => s + v, 0);
 
@@ -222,7 +237,6 @@ function buildProjectionSheet(wb: ExcelJS.Workbook, sd: ScenarioExportData) {
       alignment: { vertical: 'middle', indent },
       font: { ...(style.font as any), name: 'Calibri', size: 10 },
     };
-    // Subtle column separator every 12 months
     [13, 25, 37].forEach(col => {
       const c = r.getCell(col + 1);
       c.border = { ...c.border, left: { style: 'thin', color: rgb('CCCCCC') } };
@@ -230,54 +244,93 @@ function buildProjectionSheet(wb: ExcelJS.Workbook, sd: ScenarioExportData) {
     return r;
   };
 
-  // Baseline row
-  addDataRow('Baseline (Existing Consumption)', baselineMonths,
-    { ...dataStyle(false), font: { bold: true, size: 10, name: 'Calibri', color: rgb('374151') } });
+  // Per-account sections
+  for (const ad of accountsData) {
+    const sd = ad.scenariosData.find(s => s.scenarioNum === scenarioNum);
+    if (!sd) continue;
 
-  // Use case rows
-  const ucMonthTotals = new Array(36).fill(0);
-  activeUseCases.forEach((uc, idx) => {
-    const mp = uc.monthlyProjection;
-    mp.forEach((v, i) => { ucMonthTotals[i] += v; });
-    addDataRow(`  ↳ ${uc.name}`, mp, dataStyle(idx % 2 === 0));
-  });
+    const { activeUseCases, baselineMonths, totalMonths,
+            baseYearTotals, ucYearTotals, yearTotals,
+            baselineGrowthRate, assumptions } = sd;
 
-  // New use cases subtotal (only if there are any)
-  if (activeUseCases.length > 0) {
-    addDataRow('New Use Cases Subtotal', ucMonthTotals,
-      { ...totalStyle(TOTAL_BG, TOTAL_FG) });
+    // Account section header band
+    ws.addRow([]);
+    const acctRow = ws.addRow([
+      `${ad.accountName.toUpperCase()}  ·  Growth: ${baselineGrowthRate.toFixed(1)}% MoM` +
+      (assumptions ? `  ·  ${assumptions}` : '')
+    ]);
+    acctRow.height = 22;
+    acctRow.getCell(1).style = {
+      font: { bold: true, size: 11, color: rgb('FFFFFF'), name: 'Calibri' },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('374151') },
+      alignment: { vertical: 'middle', indent: 1 },
+    };
+    ws.mergeCells(acctRow.number, 1, acctRow.number, totalCols);
+
+    // Baseline row
+    addDataRow(
+      'Baseline (Existing Consumption)', baselineMonths,
+      { ...dataStyle(false), font: { bold: true, size: 10, name: 'Calibri', color: rgb('374151') } }
+    );
+
+    // Use case rows + SKU breakdown
+    const ucMonthTotals = new Array(36).fill(0);
+    activeUseCases.forEach((uc, idx) => {
+      const mp = uc.monthlyProjection;
+      mp.forEach((v, i) => { ucMonthTotals[i] += v; });
+      addDataRow(`  ↳ ${uc.name}`, mp, dataStyle(idx % 2 === 0));
+
+      // SKU breakdown rows indented under the use case
+      if (uc.skuBreakdown?.length) {
+        uc.skuBreakdown.forEach(sku => {
+          const skuMonths = mp.map(v => v * (sku.percentage / 100));
+          addDataRow(
+            `    └─ ${sku.sku} (${sku.percentage}%)`,
+            skuMonths,
+            {
+              font: { size: 9, name: 'Calibri', color: rgb('6B7280'), italic: true },
+              fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('F9FAFB') },
+              alignment: { vertical: 'middle' },
+            },
+            4
+          );
+        });
+      }
+    });
+
+    if (activeUseCases.length > 0) {
+      addDataRow('New Use Cases Subtotal', ucMonthTotals, { ...totalStyle(TOTAL_BG, TOTAL_FG) });
+    }
+
+    addDataRow(
+      `Grand Total (${ad.accountName})`, totalMonths,
+      { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } }
+    );
+
+    // Year summary block
+    ws.addRow([]);
+    const yhRow = ws.addRow(['', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
+    yhRow.height = 18;
+    [1, 2, 3, 4, 5].forEach(c => { yhRow.getCell(c).style = headerStyle(sc.bg); });
+
+    const yLabels = ['Baseline', 'New Use Cases', 'Grand Total'];
+    const yData = [baseYearTotals, ucYearTotals, yearTotals];
+    const yBgs = [TOTAL_BG, 'E0F2FE', GRAND_BG];
+    yLabels.forEach((label, li) => {
+      const r = ws.addRow([label, yData[li][0], yData[li][1], yData[li][2],
+        yData[li].reduce((s, v) => s + v, 0)]);
+      r.height = 18;
+      applyRowStyle(r, totalStyle(yBgs[li]));
+      [2, 3, 4, 5].forEach(c => {
+        if (typeof r.getCell(c).value === 'number') r.getCell(c).numFmt = USD_FMT;
+      });
+    });
   }
 
-  // Grand total
-  addDataRow('Grand Total', totalMonths,
-    { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } });
-
-  // Year-total summary block below
-  ws.addRow([]);
-  const yhRow = ws.addRow(['', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
-  yhRow.height = 18;
-  [1, 2, 3, 4, 5].forEach(c => {
-    yhRow.getCell(c).style = headerStyle(sc.bg);
-  });
-
-  const yLabels = ['Baseline', 'New Use Cases', 'Grand Total'];
-  const yData = [baseYearTotals, ucYearTotals, yearTotals];
-  const yBgs = [TOTAL_BG, 'E0F2FE', GRAND_BG];
-  yLabels.forEach((label, li) => {
-    const r = ws.addRow([label, yData[li][0], yData[li][1], yData[li][2],
-      yData[li].reduce((s, v) => s + v, 0)]);
-    r.height = 18;
-    applyRowStyle(r, totalStyle(yBgs[li]));
-    [2, 3, 4, 5].forEach(c => {
-      if (typeof r.getCell(c).value === 'number') r.getCell(c).numFmt = USD_FMT;
-    });
-  });
-
-  // Freeze first column + header rows so labels + month headers stay visible while scrolling
-  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 4, showGridLines: true }];
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5, showGridLines: true }];
 }
 
-// ─── Summary sheet ────────────────────────────────────────────────────────────
+// ─── Summary sheet (multi-account) ───────────────────────────────────────────
 
 async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   const ws = wb.addWorksheet('Demand Plan Summary', {
@@ -372,16 +425,16 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
-// ─── Historical sheets ────────────────────────────────────────────────────────
+// ─── Historical sheets (per account) ─────────────────────────────────────────
 
-function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
-  const ws = wb.addWorksheet('Historical by Domain', {
+function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const ws = wb.addWorksheet(safeName(ad.accountName, ' Hist-Domain'), {
     properties: { tabColor: { argb: 'FF2563EB' } },
   });
-  const months = [...new Set(opts.historicalData.map(r => r.month))].sort();
+  const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
   const domainMonthly: Record<string, Record<string, number>> = {};
-  opts.historicalData.forEach(row => {
-    const domain = opts.domainMapping[row.workspace_name] || 'Unmapped';
+  ad.historicalData.forEach(row => {
+    const domain = ad.domainMapping[row.workspace_name] || 'Unmapped';
     const dbu = parseFloat(row.dollar_dbu_list) || 0;
     if (!domainMonthly[domain]) domainMonthly[domain] = {};
     domainMonthly[domain][row.month] = (domainMonthly[domain][row.month] || 0) + dbu;
@@ -392,7 +445,7 @@ function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   );
 
   ws.columns = [{ key: 'domain', width: 32 }, ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 }];
-  addSheetTitle(ws, 'Historical Consumption by Domain', 'T12M actuals grouped by domain', months.length + 2);
+  addSheetTitle(ws, `${ad.accountName} — Historical by Domain`, 'T12M actuals grouped by domain', months.length + 2);
 
   const hrow = ws.addRow(['Domain', ...months, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
@@ -411,11 +464,13 @@ function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
-function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
-  const ws = wb.addWorksheet('Historical by SKU', { properties: { tabColor: { argb: 'FF7C3AED' } } });
-  const months = [...new Set(opts.historicalData.map(r => r.month))].sort();
+function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const ws = wb.addWorksheet(safeName(ad.accountName, ' Hist-SKU'), {
+    properties: { tabColor: { argb: 'FF7C3AED' } },
+  });
+  const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
   const skuMonthly: Record<string, Record<string, number>> = {};
-  opts.historicalData.forEach(row => {
+  ad.historicalData.forEach(row => {
     const sku = row.sku || row.sku_name || 'Unknown';
     const dbu = parseFloat(row.dollar_dbu_list) || 0;
     if (!skuMonthly[sku]) skuMonthly[sku] = {};
@@ -427,7 +482,7 @@ function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   );
 
   ws.columns = [{ key: 'sku', width: 48 }, ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 }];
-  addSheetTitle(ws, 'Historical Consumption by SKU', 'T12M actuals grouped by Databricks SKU', months.length + 2);
+  addSheetTitle(ws, `${ad.accountName} — Historical by SKU`, 'T12M actuals grouped by Databricks SKU', months.length + 2);
 
   const hrow = ws.addRow(['SKU', ...months, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
@@ -446,14 +501,16 @@ function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
-function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
-  const ws = wb.addWorksheet('Cloud · Domain · SKU', { properties: { tabColor: { argb: 'FF0891B2' } } });
-  const months = [...new Set(opts.historicalData.map(r => r.month))].sort();
+function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const ws = wb.addWorksheet(safeName(ad.accountName, ' Cloud-SKU'), {
+    properties: { tabColor: { argb: 'FF0891B2' } },
+  });
+  const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
   const cloudData: Record<string, Record<string, Record<string, Record<string, number>>>> = {};
 
-  opts.historicalData.forEach(row => {
-    const cloud  = opts.wsCloud[row.workspace_name] || 'unknown';
-    const domain = opts.domainMapping[row.workspace_name] || 'Unmapped';
+  ad.historicalData.forEach(row => {
+    const cloud  = ad.wsCloud[row.workspace_name] || 'unknown';
+    const domain = ad.domainMapping[row.workspace_name] || 'Unmapped';
     const sku    = row.sku || row.sku_name || 'Unknown';
     const dbu    = parseFloat(row.dollar_dbu_list) || 0;
     cloudData[cloud] ??= {};
@@ -466,7 +523,7 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
     { key: 'cloud',  width: 12 }, { key: 'domain', width: 26 }, { key: 'sku', width: 42 },
     ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 },
   ];
-  addSheetTitle(ws, 'Historical: Cloud → Domain → SKU', 'Hierarchical breakdown of T12M actuals', months.length + 4);
+  addSheetTitle(ws, `${ad.accountName} — Cloud → Domain → SKU`, 'Hierarchical breakdown of T12M actuals', months.length + 4);
 
   const hrow = ws.addRow(['Cloud', 'Domain', 'SKU', ...months, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
@@ -503,10 +560,12 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
-// ─── Use Case Details sheet ───────────────────────────────────────────────────
+// ─── Use Case Details sheet (per account) ────────────────────────────────────
 
-function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
-  const ws = wb.addWorksheet('Use Case Details', { properties: { tabColor: { argb: 'FF059669' } } });
+function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const ws = wb.addWorksheet(safeName(ad.accountName, ' Use Cases'), {
+    properties: { tabColor: { argb: 'FF059669' } },
+  });
   ws.columns = [
     { key: 'name',    width: 32 }, { key: 'domain',  width: 22 }, { key: 'ss',   width: 18 },
     { key: 'onboard', width: 16 }, { key: 'live',    width: 12 }, { key: 'ramp', width: 14 },
@@ -515,11 +574,11 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
     { key: 'total',   width: 18 },
   ];
 
-  addSheetTitle(ws, 'Use Case Details', 'All use cases across scenarios with year-by-year projections', 13);
+  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases across scenarios with year-by-year projections', 13);
   const hrow = ws.addRow(['Name', 'Domain', 'Steady-State $/mo', 'Onboard Month', 'Live Month', 'Ramp Type', 'S1', 'S2', 'S3', 'Year 1', 'Year 2', 'Year 3', 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 22;
 
-  opts.allUseCases.forEach((uc, idx) => {
+  ad.allUseCases.forEach((uc, idx) => {
     const yT = [0, 0, 0];
     uc.monthlyProjection.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
     const r = ws.addRow([
@@ -541,12 +600,12 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   });
 
   const totRow = ws.addRow([
-    'TOTAL', '', opts.allUseCases.reduce((s, uc) => s + uc.steadyStateDbu, 0),
+    'TOTAL', '', ad.allUseCases.reduce((s, uc) => s + uc.steadyStateDbu, 0),
     '', '', '', '', '', '',
-    opts.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(0, 12).reduce((a, v) => a + v, 0), 0),
-    opts.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(12, 24).reduce((a, v) => a + v, 0), 0),
-    opts.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(24, 36).reduce((a, v) => a + v, 0), 0),
-    opts.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.reduce((a, v) => a + v, 0), 0),
+    ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(0, 12).reduce((a, v) => a + v, 0), 0),
+    ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(12, 24).reduce((a, v) => a + v, 0), 0),
+    ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(24, 36).reduce((a, v) => a + v, 0), 0),
+    ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.reduce((a, v) => a + v, 0), 0),
   ]);
   applyRowStyle(totRow, totalStyle(GRAND_BG));
   [3, 10, 11, 12, 13].forEach(col => {
@@ -557,25 +616,26 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
-// ─── Domain Baseline sheet ────────────────────────────────────────────────────
+// ─── Domain Baseline sheet (per account) ─────────────────────────────────────
 
-function buildDomainBaselineSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
-  const ws = wb.addWorksheet('Domain Baseline', { properties: { tabColor: { argb: 'FF6366F1' } } });
+function buildDomainBaselineSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const ws = wb.addWorksheet(safeName(ad.accountName, ' Baseline'), {
+    properties: { tabColor: { argb: 'FF6366F1' } },
+  });
   ws.columns = [{ key: 'domain', width: 32 }, { key: 't12m', width: 20 }, { key: 'avg', width: 20 }, { key: 'pct', width: 14 }];
-  addSheetTitle(ws, 'Domain Baseline Summary', 'T12M consumption per domain used as projection baseline', 4);
+  addSheetTitle(ws, `${ad.accountName} — Domain Baseline`, 'T12M consumption per domain used as projection baseline', 4);
 
   const hrow = ws.addRow(['Domain', 'T12M $DBU (List)', 'Avg Monthly', '% of Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
-  const totalBL = opts.domainBaselines.reduce((s, b) => s + b.t12m, 0);
-  opts.domainBaselines.forEach((b, idx) => {
+  const totalBL = ad.domainBaselines.reduce((s, b) => s + b.t12m, 0);
+  ad.domainBaselines.forEach((b, idx) => {
     const pct = totalBL > 0 ? b.t12m / totalBL : 0;
     const r = ws.addRow([b.domain, b.t12m, b.avgMonthly, pct]);
     applyRowStyle(r, dataStyle(idx % 2 === 1));
     r.getCell(2).numFmt = USD_FMT;
     r.getCell(3).numFmt = USD_FMT;
     r.getCell(4).numFmt = PCT_FMT;
-    // Heat-map: blue tint proportional to share
     const intensity = Math.round(200 - pct * 150);
     const hex = intensity.toString(16).padStart(2, '0');
     r.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${hex}${hex}FF` } };
@@ -590,21 +650,23 @@ function buildDomainBaselineSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
 
-// ─── SKU Breakdown sheet ──────────────────────────────────────────────────────
+// ─── SKU Breakdown sheet (per account) ───────────────────────────────────────
 
-function buildSkuBreakdownSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
-  const ws = wb.addWorksheet('SKU Breakdown', { properties: { tabColor: { argb: 'FFEA580C' } } });
+function buildSkuBreakdownSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const ws = wb.addWorksheet(safeName(ad.accountName, ' SKU Detail'), {
+    properties: { tabColor: { argb: 'FFEA580C' } },
+  });
   ws.columns = [
     { key: 'uc',    width: 32 }, { key: 'sku',   width: 28 }, { key: 'cloud', width: 10 },
     { key: 'pct',   width: 10 }, { key: 'dbus',  width: 14 }, { key: 'price', width: 12 },
     { key: 'dollar',width: 16 }, { key: 'notes', width: 52 },
   ];
-  addSheetTitle(ws, 'Use Case SKU Breakdown', 'Per-use-case SKU allocation, pricing, and assumptions', 8);
+  addSheetTitle(ws, `${ad.accountName} — SKU Breakdown`, 'Per-use-case SKU allocation, pricing, and assumptions', 8);
 
   const hrow = ws.addRow(['Use Case', 'SKU', 'Cloud', '% Split', 'DBUs/mo', '$/DBU', '$/month', 'Assumptions']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
-  opts.allUseCases.forEach((uc) => {
+  ad.allUseCases.forEach((uc) => {
     if (!uc.skuBreakdown?.length) return;
     uc.skuBreakdown.forEach((alloc, idx) => {
       const price = alloc.dbus > 0 ? alloc.dollarDbu / alloc.dbus : 0;
@@ -646,24 +708,34 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   wb.created = new Date();
   wb.properties.date1904 = false;
 
+  // 1. Summary (all accounts)
   await buildSummarySheet(wb, opts);
-  buildHistoricalDomainSheet(wb, opts);
-  buildHistoricalSkuSheet(wb, opts);
-  buildCloudDomainSkuSheet(wb, opts);
 
-  for (const sd of opts.scenariosData) {
-    buildProjectionSheet(wb, sd);
+  // 2. Historical sheets: one set per account
+  for (const ad of opts.accountsData) {
+    buildHistoricalDomainSheet(wb, ad);
+    buildHistoricalSkuSheet(wb, ad);
+    buildCloudDomainSkuSheet(wb, ad);
   }
 
-  buildUseCaseDetailsSheet(wb, opts);
-  buildDomainBaselineSheet(wb, opts);
-  buildSkuBreakdownSheet(wb, opts);
+  // 3. Projection sheets: one per scenario, all accounts combined
+  for (const sNum of [1, 2, 3] as const) {
+    buildProjectionSheetMulti(wb, sNum, opts.accountsData);
+  }
+
+  // 4. Per-account detail sheets
+  for (const ad of opts.accountsData) {
+    buildUseCaseDetailsSheet(wb, ad);
+    buildDomainBaselineSheet(wb, ad);
+    buildSkuBreakdownSheet(wb, ad);
+  }
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
-  const filename = `Demand_Plan_${opts.account}_AllScenarios_${new Date().toISOString().split('T')[0]}.xlsx`;
+  const accountLabel = opts.accounts.filter(a => a.name.trim()).map(a => a.name).join('_') || opts.account;
+  const filename = `Demand_Plan_${accountLabel}_AllScenarios_${new Date().toISOString().split('T')[0]}.xlsx`;
   return { blob, filename };
 }
 
