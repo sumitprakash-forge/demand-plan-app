@@ -269,16 +269,27 @@ function DatabricksStep({ status, onDone }: { status: SetupStatus | null; onDone
 
 function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: () => void }) {
   const done = status?.google ?? false;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [method, setMethod] = useState<'gcloud' | 'device' | null>(null);
+  // Device flow state
   const [flowData, setFlowData] = useState<{ device_code: string; user_code: string; verification_url: string; expires_in: number; interval: number } | null>(null);
   const [polling, setPolling] = useState(false);
   const [pollStatus, setPollStatus] = useState<'pending' | 'authorized' | 'expired' | 'error' | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  // Start device flow
-  const handleStart = async () => {
-    setLoading(true); setError(''); setFlowData(null); setPollStatus(null);
+  // Try gcloud first, then device flow
+  const handleAuthorize = async () => {
+    setLoading(true); setError(''); setMethod(null);
     try {
+      const gcloud = await apiFetch('/api/setup/google/check-gcloud', { method: 'POST' });
+      if (gcloud.status === 'ok') {
+        // gcloud works — mark as authorized via gcloud
+        setMethod('gcloud');
+        onDone();
+        return;
+      }
+      // gcloud not available — try device flow
+      setMethod('device');
       const data = await apiFetch('/api/setup/google/start', { method: 'POST' });
       if (data.error) throw new Error(data.error_description || data.error);
       setFlowData(data);
@@ -297,20 +308,15 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
         const result = await apiFetch(`/api/setup/google/poll?device_code=${encodeURIComponent(deviceCode)}`);
         if (result.status === 'authorized') {
           clearInterval(timer);
-          setPolling(false);
-          setPollStatus('authorized');
-          setFlowData(null);
+          setPolling(false); setPollStatus('authorized'); setFlowData(null);
           onDone();
         } else if (result.status === 'expired' || result.status === 'error') {
           clearInterval(timer);
-          setPolling(false);
-          setPollStatus(result.status);
+          setPolling(false); setPollStatus(result.status);
         }
-        // 'pending' → keep polling
       } catch {
         clearInterval(timer);
-        setPolling(false);
-        setPollStatus('error');
+        setPolling(false); setPollStatus('error');
       }
     }, intervalSecs * 1000);
   };
@@ -318,7 +324,7 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
   const handleDisconnect = async () => {
     try {
       await apiFetch('/api/setup/google', { method: 'DELETE' });
-      setFlowData(null); setPollStatus(null);
+      setFlowData(null); setPollStatus(null); setMethod(null);
       onDone();
     } catch (e: any) {
       setError(e.message);
@@ -345,7 +351,7 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <span className="text-emerald-500">●</span>
-              Google Sheets access is active. Refresh token stored locally.
+              Google Sheets access is active {method === 'gcloud' ? '(via gcloud)' : '(OAuth token)'}.
             </div>
             <button onClick={handleDisconnect} className="text-xs text-red-500 hover:underline">
               Disconnect
@@ -353,24 +359,15 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
           </div>
         ) : (
           <>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
-              <p className="font-medium mb-1">How it works</p>
-              <ol className="list-decimal list-inside space-y-1 text-xs text-blue-700">
-                <li>Click "Authorize with Google" below</li>
-                <li>A code will appear — go to the link shown and enter it</li>
-                <li>Sign in with your Google account and grant read access to Sheets & Drive</li>
-                <li>Come back here — authorization is detected automatically</li>
-              </ol>
-            </div>
-
             {!flowData && !polling && (
               <>
                 {error && <p className="text-sm text-red-600">{error}</p>}
-                {pollStatus === 'expired' && (
-                  <p className="text-sm text-amber-600">Code expired. Start again.</p>
-                )}
+                {pollStatus === 'expired' && <p className="text-sm text-amber-600">Code expired. Try again.</p>}
+                <p className="text-xs text-slate-500">
+                  Uses your existing <code className="bg-slate-100 px-1 rounded">gcloud</code> login if available, otherwise starts an OAuth device flow.
+                </p>
                 <button
-                  onClick={handleStart}
+                  onClick={handleAuthorize}
                   disabled={loading}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
                 >
@@ -382,36 +379,30 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
                       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                     </svg>
                   )}
-                  {loading ? 'Starting…' : 'Authorize with Google'}
+                  {loading ? 'Checking…' : 'Authorize with Google'}
                 </button>
               </>
             )}
 
             {flowData && (
               <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <p className="text-sm text-slate-500">gcloud not available — complete OAuth below:</p>
                 <p className="text-sm font-medium text-slate-700">
                   1. Go to{' '}
                   <a href={flowData.verification_url} target="_blank" rel="noopener noreferrer"
-                    className="text-blue-600 underline font-mono">{flowData.verification_url}
-                  </a>
+                    className="text-blue-600 underline font-mono">{flowData.verification_url}</a>
                 </p>
                 <p className="text-sm text-slate-700">2. Enter this code:</p>
                 <div className="flex items-center gap-3">
                   <span className="text-2xl font-mono font-bold tracking-widest bg-slate-100 px-4 py-2 rounded-lg text-slate-800">
                     {flowData.user_code}
                   </span>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(flowData.user_code)}
-                    className="text-xs text-slate-400 hover:text-slate-600"
-                    title="Copy code"
-                  >
-                    Copy
-                  </button>
+                  <button onClick={() => navigator.clipboard.writeText(flowData.user_code)}
+                    className="text-xs text-slate-400 hover:text-slate-600">Copy</button>
                 </div>
                 {polling && (
                   <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <SpinIcon />
-                    Waiting for authorization…
+                    <SpinIcon /> Waiting for authorization…
                   </div>
                 )}
               </div>

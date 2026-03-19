@@ -754,8 +754,17 @@ async def get_account_overview(account: str = Query(default="Walmart")):
 @app.get("/api/setup/status")
 async def setup_status():
     """Return which setup steps are complete."""
+    import subprocess
     from sheets import get_stored_google_token
+    # Google is ok if stored token exists OR gcloud works
     google_ok = get_stored_google_token() is not None
+    if not google_ok:
+        try:
+            r = subprocess.run(["gcloud", "auth", "print-access-token"],
+                               capture_output=True, text=True, timeout=10)
+            google_ok = r.returncode == 0 and bool(r.stdout.strip())
+        except Exception:
+            pass
     return {
         "databricks": bool(_config.get("host") and _config.get("token")),
         "google": google_ok,
@@ -827,10 +836,33 @@ async def save_warehouse(data: dict):
     _save_config()
     return {"status": "ok"}
 
-# ── Setup: Google OAuth device flow ────────────────────────────────────────────
+# ── Setup: Google — try gcloud first, then device flow ─────────────────────────
+@app.post("/api/setup/google/check-gcloud")
+async def google_check_gcloud():
+    """Check if gcloud auth is available and working."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["gcloud", "auth", "print-access-token"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return {"status": "ok", "method": "gcloud"}
+        return {"status": "unavailable", "detail": result.stderr.strip()}
+    except FileNotFoundError:
+        return {"status": "unavailable", "detail": "gcloud not installed"}
+    except Exception as e:
+        return {"status": "unavailable", "detail": str(e)}
+
 @app.post("/api/setup/google/start")
 async def google_oauth_start():
     """Start Google OAuth 2.0 device flow."""
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(
+            status_code=400,
+            detail="GOOGLE_CLIENT_ID environment variable not set. Use gcloud auth instead.",
+        )
     from sheets import start_device_flow
     try:
         result = await start_device_flow()
