@@ -33,6 +33,7 @@ export interface ScenarioExportData {
 
 export interface AccountExportData {
   accountName: string;
+  contractStartDate: string;  // YYYY-MM, e.g. "2026-05" — defines M1
   historicalData: any[];
   domainMapping: Record<string, string>;
   wsCloud: Record<string, string>;
@@ -77,6 +78,26 @@ const SCENARIO_COLORS: Record<number, { bg: string; light: string; text: string 
 
 const USD_FMT = '$#,##0';
 const PCT_FMT = '0.0%';
+
+// ─── Month label helpers ──────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** M1-based index (1=M1) → "May_2026" using contractStartDate "YYYY-MM" */
+function projMonthLabel(monthNum: number, contractStartDate: string): string {
+  if (!contractStartDate) return `M${monthNum}`;
+  const [y, m] = contractStartDate.split('-').map(Number);
+  const d = new Date(y, m - 1 + (monthNum - 1));
+  return `${MONTH_NAMES[d.getMonth()]}_${d.getFullYear()}`;
+}
+
+/** "YYYY-MM" → "May_2026" for historical axis */
+function histMonthLabel(yyyymm: string): string {
+  const [y, m] = yyyymm.split('-').map(Number);
+  if (!y || !m) return yyyymm;
+  return `${MONTH_NAMES[m - 1]}_${y}`;
+}
 
 // ─── Style helpers ────────────────────────────────────────────────────────────
 
@@ -185,13 +206,24 @@ function buildProjectionSheetMulti(
     totalCols
   );
 
-  // Month header row
-  const monthLabels = Array.from({ length: 36 }, (_, i) => {
-    const yr = Math.floor(i / 12) + 1;
-    const mo = (i % 12) + 1;
-    return `M${mo}\nY${yr}`;
-  });
-  const hrow = ws.addRow(['', ...monthLabels, 'Y1 Total', 'Y2 Total', 'Y3 Total', 'Grand Total']);
+  // Month header row — use real calendar months from first account's contractStartDate
+  const firstCsd = accountsData[0]?.contractStartDate || '';
+  const monthLabels = Array.from({ length: 36 }, (_, i) =>
+    projMonthLabel(i + 1, firstCsd)
+  );
+
+  // Y1/Y2/Y3 labels use actual year ranges when contractStartDate is set
+  const y1Label = firstCsd
+    ? `Y1 (${projMonthLabel(1, firstCsd)}–${projMonthLabel(12, firstCsd)})`
+    : 'Y1 Total';
+  const y2Label = firstCsd
+    ? `Y2 (${projMonthLabel(13, firstCsd)}–${projMonthLabel(24, firstCsd)})`
+    : 'Y2 Total';
+  const y3Label = firstCsd
+    ? `Y3 (${projMonthLabel(25, firstCsd)}–${projMonthLabel(36, firstCsd)})`
+    : 'Y3 Total';
+
+  const hrow = ws.addRow(['', ...monthLabels, y1Label, y2Label, y3Label, 'Grand Total']);
   hrow.height = 30;
   hrow.eachCell({ includeEmpty: true }, (cell, colNum) => {
     cell.style = {
@@ -308,8 +340,12 @@ function buildProjectionSheetMulti(
     );
 
     // Year summary block
+    const csd = ad.contractStartDate || '';
+    const yl1 = csd ? `Y1 (${projMonthLabel(1, csd)}–${projMonthLabel(12, csd)})` : 'Year 1';
+    const yl2 = csd ? `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})` : 'Year 2';
+    const yl3 = csd ? `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})` : 'Year 3';
     ws.addRow([]);
-    const yhRow = ws.addRow(['', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
+    const yhRow = ws.addRow(['', yl1, yl2, yl3, 'Grand Total']);
     yhRow.height = 18;
     [1, 2, 3, 4, 5].forEach(c => { yhRow.getCell(c).style = headerStyle(sc.bg); });
 
@@ -432,6 +468,7 @@ function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, ad: AccountExportData)
     properties: { tabColor: { argb: 'FF2563EB' } },
   });
   const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
+  const monthDisplays = months.map(histMonthLabel);
   const domainMonthly: Record<string, Record<string, number>> = {};
   ad.historicalData.forEach(row => {
     const domain = ad.domainMapping[row.workspace_name] || 'Unmapped';
@@ -447,7 +484,7 @@ function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, ad: AccountExportData)
   ws.columns = [{ key: 'domain', width: 32 }, ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 }];
   addSheetTitle(ws, `${ad.accountName} — Historical by Domain`, 'T12M actuals grouped by domain', months.length + 2);
 
-  const hrow = ws.addRow(['Domain', ...months, 'Total']);
+  const hrow = ws.addRow(['Domain', ...monthDisplays, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
   domainKeys.forEach((d, idx) => {
@@ -469,6 +506,7 @@ function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     properties: { tabColor: { argb: 'FF7C3AED' } },
   });
   const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
+  const monthDisplays = months.map(histMonthLabel);
   const skuMonthly: Record<string, Record<string, number>> = {};
   ad.historicalData.forEach(row => {
     const sku = row.sku || row.sku_name || 'Unknown';
@@ -484,7 +522,7 @@ function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   ws.columns = [{ key: 'sku', width: 48 }, ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 }];
   addSheetTitle(ws, `${ad.accountName} — Historical by SKU`, 'T12M actuals grouped by Databricks SKU', months.length + 2);
 
-  const hrow = ws.addRow(['SKU', ...months, 'Total']);
+  const hrow = ws.addRow(['SKU', ...monthDisplays, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
   skuKeys.forEach((s, idx) => {
@@ -506,6 +544,7 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     properties: { tabColor: { argb: 'FF0891B2' } },
   });
   const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
+  const monthDisplays = months.map(histMonthLabel);
   const cloudData: Record<string, Record<string, Record<string, Record<string, number>>>> = {};
 
   ad.historicalData.forEach(row => {
@@ -525,7 +564,7 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   ];
   addSheetTitle(ws, `${ad.accountName} — Cloud → Domain → SKU`, 'Hierarchical breakdown of T12M actuals', months.length + 4);
 
-  const hrow = ws.addRow(['Cloud', 'Domain', 'SKU', ...months, 'Total']);
+  const hrow = ws.addRow(['Cloud', 'Domain', 'SKU', ...monthDisplays, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
   Object.keys(cloudData).sort().forEach(cloud => {
@@ -563,54 +602,99 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
 // ─── Use Case Details sheet (per account) ────────────────────────────────────
 
 function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
+  const csd = ad.contractStartDate || '';
   const ws = wb.addWorksheet(safeName(ad.accountName, ' Use Cases'), {
     properties: { tabColor: { argb: 'FF059669' } },
   });
+
+  // Columns: Name | Domain | SS $/mo | Cloud | Onboard | Live | Ramp | S1|S2|S3 | Y1 | Y2 | Y3 | Total | Assumptions
+  const y1Label = csd ? `Y1 (${projMonthLabel(1, csd)}–${projMonthLabel(12, csd)})` : 'Year 1';
+  const y2Label = csd ? `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})` : 'Year 2';
+  const y3Label = csd ? `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})` : 'Year 3';
+
   ws.columns = [
-    { key: 'name',    width: 32 }, { key: 'domain',  width: 22 }, { key: 'ss',   width: 18 },
-    { key: 'onboard', width: 16 }, { key: 'live',    width: 12 }, { key: 'ramp', width: 14 },
-    { key: 's1',      width: 6  }, { key: 's2',      width: 6  }, { key: 's3',   width: 6  },
-    { key: 'y1',      width: 18 }, { key: 'y2',      width: 18 }, { key: 'y3',   width: 18 },
-    { key: 'total',   width: 18 },
+    { key: 'name',    width: 34 }, { key: 'domain',  width: 22 }, { key: 'ss',     width: 18 },
+    { key: 'cloud',   width: 10 }, { key: 'onboard', width: 16 }, { key: 'live',   width: 16 },
+    { key: 'ramp',    width: 14 }, { key: 's1',      width: 5  }, { key: 's2',     width: 5  },
+    { key: 's3',      width: 5  }, { key: 'y1',      width: 18 }, { key: 'y2',     width: 18 },
+    { key: 'y3',      width: 18 }, { key: 'total',   width: 18 }, { key: 'notes',  width: 60 },
   ];
 
-  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases across scenarios with year-by-year projections', 13);
-  const hrow = ws.addRow(['Name', 'Domain', 'Steady-State $/mo', 'Onboard Month', 'Live Month', 'Ramp Type', 'S1', 'S2', 'S3', 'Year 1', 'Year 2', 'Year 3', 'Total']);
+  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with SKU breakdown and assumptions', 15);
+  const hrow = ws.addRow([
+    'Name', 'Domain', 'Steady-State $/mo', 'Cloud',
+    'Onboard Month', 'Live Month', 'Ramp Type', 'S1', 'S2', 'S3',
+    y1Label, y2Label, y3Label, 'Grand Total', 'Assumptions',
+  ]);
   applyRowStyle(hrow, headerStyle()); hrow.height = 22;
 
-  ad.allUseCases.forEach((uc, idx) => {
+  let ucCount = 0;
+  ad.allUseCases.forEach((uc) => {
     const yT = [0, 0, 0];
     uc.monthlyProjection.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
-    const r = ws.addRow([
-      uc.name, uc.domain, uc.steadyStateDbu,
-      `M${uc.onboardingMonth}`, `M${uc.liveMonth}`,
+    const ucRow = ws.addRow([
+      uc.name, uc.domain, uc.steadyStateDbu, uc.cloud || '',
+      projMonthLabel(uc.onboardingMonth, csd),
+      projMonthLabel(uc.liveMonth, csd),
       uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear',
       uc.scenarios[0] ? '✓' : '', uc.scenarios[1] ? '✓' : '', uc.scenarios[2] ? '✓' : '',
       yT[0], yT[1], yT[2], yT.reduce((a, b) => a + b, 0),
+      uc.assumptions || '',
     ]);
-    applyRowStyle(r, dataStyle(idx % 2 === 1));
-    [3, 10, 11, 12, 13].forEach(col => {
-      const c = r.getCell(col);
-      if (typeof c.value === 'number') c.numFmt = USD_FMT;
+    applyRowStyle(ucRow, dataStyle(ucCount % 2 === 0));
+    ucRow.getCell(1).font = { bold: true, size: 10, name: 'Calibri' };
+    [3, 11, 12, 13, 14].forEach(col => {
+      const c = ucRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
     });
-    [7, 8, 9].forEach(col => {
-      r.getCell(col).alignment = { horizontal: 'center', vertical: 'middle' };
-      r.getCell(col).font = { color: rgb('059669'), bold: true, name: 'Calibri', size: 11 };
+    [8, 9, 10].forEach(col => {
+      ucRow.getCell(col).alignment = { horizontal: 'center', vertical: 'middle' };
+      ucRow.getCell(col).font = { color: rgb('059669'), bold: true, name: 'Calibri', size: 11 };
     });
+    ucRow.getCell(15).alignment = { wrapText: true, vertical: 'top' };
+
+    // SKU breakdown sub-rows
+    if (uc.skuBreakdown?.length) {
+      uc.skuBreakdown.forEach((sku) => {
+        const skuRow = ws.addRow([
+          `    └─ ${sku.sku}`, '', sku.dollarDbu, '',
+          `${sku.percentage}% of UC`, '', '', '', '', '',
+          yT[0] * sku.percentage / 100,
+          yT[1] * sku.percentage / 100,
+          yT[2] * sku.percentage / 100,
+          yT.reduce((a, b) => a + b, 0) * sku.percentage / 100,
+          `DBUs/mo: ${Math.round(sku.dbus)}  ·  $/DBU: ${sku.dbus > 0 ? (sku.dollarDbu / sku.dbus).toFixed(2) : 'N/A'}`,
+        ]);
+        skuRow.height = 16;
+        skuRow.eachCell({ includeEmpty: true }, (cell) => {
+          cell.style = {
+            font: { size: 9, name: 'Calibri', color: rgb('6B7280'), italic: true },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('F9FAFB') },
+            alignment: { vertical: 'middle' },
+          };
+        });
+        [3, 11, 12, 13, 14].forEach(col => {
+          const c = skuRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
+        });
+        skuRow.getCell(1).alignment = { vertical: 'middle', indent: 2 };
+        skuRow.getCell(15).alignment = { vertical: 'middle', wrapText: true };
+      });
+    }
+
+    ucCount++;
   });
 
+  // Totals row
   const totRow = ws.addRow([
-    'TOTAL', '', ad.allUseCases.reduce((s, uc) => s + uc.steadyStateDbu, 0),
-    '', '', '', '', '', '',
+    'TOTAL', '', ad.allUseCases.reduce((s, uc) => s + uc.steadyStateDbu, 0), '', '', '', '', '', '', '',
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(0, 12).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(12, 24).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(24, 36).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.reduce((a, v) => a + v, 0), 0),
+    '',
   ]);
   applyRowStyle(totRow, totalStyle(GRAND_BG));
-  [3, 10, 11, 12, 13].forEach(col => {
-    const c = totRow.getCell(col);
-    if (typeof c.value === 'number') c.numFmt = USD_FMT;
+  [3, 11, 12, 13, 14].forEach(col => {
+    const c = totRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
   });
 
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];

@@ -210,7 +210,7 @@ export default function App() {
         monthlyProjection: calcUseCaseMonthly(uc),
       }));
 
-      return { accountName: acct.name, historicalData, domainMapping, wsCloud, wsOrg, domainBaselines, allUseCases, scenariosData };
+      return { accountName: acct.name, contractStartDate: acct.contractStartDate || '', historicalData, domainMapping, wsCloud, wsOrg, domainBaselines, allUseCases, scenariosData };
     };
 
     const accountsData = await Promise.all(activeAccounts.map(buildAccountData));
