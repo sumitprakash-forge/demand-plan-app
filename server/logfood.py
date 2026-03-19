@@ -154,6 +154,75 @@ def query_sku_prices(account: str = "Walmart", host: str = "", token: str = "", 
     return rows
 
 
+CONTRACT_HEALTH_SQL = """
+SELECT
+    account_id,
+    contract_number,
+    contract_id,
+    calendar_year_month                                                     AS usage_month,
+    CAST(contract_start_date AS STRING)                                     AS contract_start_date,
+    CAST(contract_end_date AS STRING)                                       AS contract_end_date,
+    COALESCE(commit_amount_customer, 0)                                     AS commit_amount_usd,
+    COALESCE(commit_consumed_dollar_dbus, 0)                                AS monthly_actual,
+    COALESCE(cum_commit_consumed_dollar_dbus, 0)                            AS cumulative_actual,
+    GREATEST(COALESCE(commit_amount_customer, 0)
+             - COALESCE(cum_commit_consumed_dollar_dbus, 0), 0)             AS remaining_commit,
+    COALESCE(cum_pct_burn_down_actual, 0) * 100                             AS burn_pct,
+    is_primary_contract_ind,
+    contract_rank
+FROM main.gtm_gold.commit_consumption_cpq_monthly
+WHERE account_id = '{account_id}'
+  AND is_contract_cancelled_ind = false
+ORDER BY contract_rank, usage_month
+"""
+
+
+def query_contract_health(account: str, host: str = "", token: str = "", warehouse_id: str = "") -> list[dict]:
+    """
+    Query contract burn curve data from main.gtm_gold.commit_consumption_cpq_monthly.
+    Returns monthly rows with cumulative actuals vs. commit amount.
+    """
+    w = _get_client(host, token)
+    wh_id = warehouse_id if warehouse_id else "071969b1ec9a91ca"
+
+    sql = CONTRACT_HEALTH_SQL.format(account_id=account.strip())
+
+    result = w.statement_execution.execute_statement(
+        warehouse_id=wh_id,
+        statement=sql,
+        wait_timeout="30s",
+    )
+
+    if result.status and result.status.state and result.status.state.value in ("PENDING", "RUNNING"):
+        import time as _time
+        stmt_id = result.statement_id
+        for _ in range(6):  # max 30s additional poll
+            _time.sleep(5)
+            result = w.statement_execution.get_statement(stmt_id)
+            if result.status.state.value in ("SUCCEEDED", "FAILED", "CANCELED", "CLOSED"):
+                break
+
+    if result.status and result.status.state and result.status.state.value != "SUCCEEDED":
+        raise RuntimeError(f"Query {result.status.state.value}: {getattr(result.status.error, 'message', '')}")
+
+    if not result.result or not result.result.data_array:
+        return []
+
+    columns = [col.name for col in result.manifest.schema.columns]
+    rows = []
+    numeric_cols = {"commit_amount_usd", "monthly_actual", "cumulative_actual", "remaining_commit", "burn_pct"}
+    for row_data in result.result.data_array:
+        row = {}
+        for i, col_name in enumerate(columns):
+            val = row_data[i]
+            if col_name in numeric_cols and val is not None:
+                val = float(val)
+            row[col_name] = val
+        rows.append(row)
+
+    return rows
+
+
 def search_accounts(query: str, host: str, token: str, warehouse_id: str) -> list[dict]:
     """
     Search for accounts by name or ID (last 90 days).

@@ -93,6 +93,12 @@ export async function fetchAccountOverview(account: string) {
   return res.json();
 }
 
+export async function fetchContractHealth(account: string) {
+  const res = await fetch(`${BASE}/contract-health?account=${encodeURIComponent(account)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export function formatCurrency(value: number): string {
   const rounded = Math.round(value);
   if (Math.abs(rounded) >= 1_000_000) return `$${(rounded / 1_000_000).toFixed(1)}M`;

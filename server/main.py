@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from models import ScenarioAssumptions, ForecastUpdate
 from sheets import fetch_domain_mapping
-from logfood import query_consumption, query_sku_prices
+from logfood import query_consumption, query_sku_prices, query_contract_health
 from sku_mapping import get_friendly_name
 
 app = FastAPI(title="Demand Plan App")
@@ -703,17 +703,24 @@ async def get_account_overview(account: str = Query(default="Walmart")):
 
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
-    # Aggregate by month and domain
+    # Aggregate by month, domain, and SKU
     monthly_totals: dict[str, float] = defaultdict(float)
     domain_totals: dict[str, float] = defaultdict(float)
+    month_domain: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    month_sku: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    sku_totals: dict[str, float] = defaultdict(float)
 
     for row in consumption:
         month = row.get("month", "")
         ws = row.get("workspace_name", "")
+        sku = row.get("sku", "Unknown") or "Unknown"
         domain = ws_to_domain.get(ws, "Unmapped")
         dbu = float(row.get("dollar_dbu_list", 0) or 0)
         monthly_totals[month] += dbu
         domain_totals[domain] += dbu
+        month_domain[month][domain] += dbu
+        month_sku[month][sku] += dbu
+        sku_totals[sku] += dbu
 
     sorted_months = sorted(monthly_totals.keys())
     total_t12m = sum(monthly_totals.values())
@@ -748,6 +755,22 @@ async def get_account_overview(account: str = Query(default="Walmart")):
         for d, v in sorted(domain_totals.items(), key=lambda x: -x[1])
     ]
 
+    # Top domains + SKUs for stacked chart keys
+    top_domain_keys = [d for d, _ in sorted(domain_totals.items(), key=lambda x: -x[1])[:10]]
+    top_sku_keys    = [s for s, _ in sorted(sku_totals.items(),    key=lambda x: -x[1])[:10]]
+
+    # Monthly by domain — [{month, domain1: v, domain2: v, ...}]
+    monthly_by_domain = [
+        {"month": m, **{d: round(month_domain[m].get(d, 0), 2) for d in top_domain_keys}}
+        for m in sorted_months
+    ]
+
+    # Monthly by SKU — [{month, sku1: v, sku2: v, ...}]
+    monthly_by_sku = [
+        {"month": m, **{s: round(month_sku[m].get(s, 0), 2) for s in top_sku_keys}}
+        for m in sorted_months
+    ]
+
     return {
         "account": account,
         "total_t12m": round(total_t12m, 2),
@@ -758,6 +781,97 @@ async def get_account_overview(account: str = Query(default="Walmart")):
         "monthly_trend": monthly_trend,
         "top_domains": top_domains,
         "domain_table": domain_table,
+        "monthly_by_domain": monthly_by_domain,
+        "monthly_by_sku": monthly_by_sku,
+        "top_domain_keys": top_domain_keys,
+        "top_sku_keys": top_sku_keys,
+    }
+
+
+# ── Contract Health ────────────────────────────────────────────────────────────
+@app.get("/api/contract-health")
+async def get_contract_health(account: str = Query(default="")):
+    """
+    Fetch contract burn curve data from main.gtm_gold.commit_consumption_cpq_monthly.
+    Returns monthly rows aggregated by opportunity, plus a derived summary.
+    """
+    if not account:
+        return {"account": account, "opportunities": [], "summary": None}
+
+    host = _config.get("host", "")
+    token = _config.get("token", "")
+    warehouse_id = _config.get("warehouse_id", "")
+
+    try:
+        import asyncio as _aio
+        rows = await _aio.wait_for(
+            _aio.to_thread(query_contract_health, account, host, token, warehouse_id),
+            timeout=45,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Contract health query timed out (>45s)")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Contract health query failed: {str(e)}")
+
+    if not rows:
+        return {"account": account, "opportunities": [], "summary": None}
+
+    # Group by contract_number — each is a separate contract line
+    from collections import defaultdict
+    contract_rows: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        label = r.get("contract_number") or r.get("contract_id") or "Contract"
+        contract_rows[label].append(r)
+
+    opportunities = []
+    for contract_label, opp_data in contract_rows.items():
+        opp_data_sorted = sorted(opp_data, key=lambda x: x.get("usage_month") or "")
+        commit_amount = float(opp_data_sorted[0].get("commit_amount_usd") or 0)
+        contract_start = opp_data_sorted[0].get("contract_start_date") or ""
+        contract_end   = opp_data_sorted[0].get("contract_end_date") or ""
+
+        # Build monthly burn curve
+        burn_curve = []
+        for r in opp_data_sorted:
+            burn_curve.append({
+                "month":            r.get("usage_month", ""),
+                "monthly_actual":   round(float(r.get("monthly_actual") or 0), 2),
+                "cumulative_actual":round(float(r.get("cumulative_actual") or 0), 2),
+                "commit_amount":    round(commit_amount, 2),
+                "remaining_commit": round(float(r.get("remaining_commit") or 0), 2),
+            })
+
+        latest = opp_data_sorted[-1]
+        cumulative_consumed = float(latest.get("cumulative_actual") or 0)
+        remaining = float(latest.get("remaining_commit") or max(commit_amount - cumulative_consumed, 0))
+        burn_pct = round(float(latest.get("burn_pct") or 0), 1)
+
+        opportunities.append({
+            "opportunity_name": contract_label,
+            "contract_start":   str(contract_start)[:10] if contract_start else "",
+            "contract_end":     str(contract_end)[:10] if contract_end else "",
+            "commit_amount":    round(commit_amount, 2),
+            "cumulative_actual":round(cumulative_consumed, 2),
+            "remaining_commit": round(remaining, 2),
+            "burn_pct":         burn_pct,
+            "burn_curve":       burn_curve,
+        })
+
+    # Overall summary across all opportunities
+    total_commit = sum(o["commit_amount"] for o in opportunities)
+    total_consumed = sum(o["cumulative_actual"] for o in opportunities)
+    total_remaining = sum(o["remaining_commit"] for o in opportunities)
+    overall_burn_pct = round(total_consumed / total_commit * 100, 1) if total_commit else 0
+
+    return {
+        "account": account,
+        "opportunities": opportunities,
+        "summary": {
+            "total_commit":    round(total_commit, 2),
+            "total_consumed":  round(total_consumed, 2),
+            "total_remaining": round(total_remaining, 2),
+            "burn_pct":        overall_burn_pct,
+        },
     }
 
 

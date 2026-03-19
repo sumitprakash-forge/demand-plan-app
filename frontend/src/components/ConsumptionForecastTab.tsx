@@ -1,6 +1,36 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchConsumptionForecast, fetchScenario, saveScenario, formatCurrency, ConflictError } from '../api';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import type { AccountConfig } from '../App';
+
+const CHART_COLORS = [
+  '#3B82F6','#10B981','#F59E0B','#8B5CF6','#EF4444','#EC4899',
+  '#06B6D4','#84CC16','#F97316','#6366F1','#14B8A6','#E11D48',
+];
+
+function downloadChartAsPng(containerRef: React.RefObject<HTMLDivElement | null>, filename: string) {
+  const svg = containerRef.current?.querySelector('svg');
+  if (!svg) return;
+  const svgData = new XMLSerializer().serializeToString(svg);
+  const canvas = document.createElement('canvas');
+  const scale = 2;
+  canvas.width  = svg.clientWidth  * scale;
+  canvas.height = svg.clientHeight * scale;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const img = new Image();
+  img.onload = () => {
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const a = document.createElement('a');
+    a.download = filename;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  };
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+}
 
 interface ForecastRow {
   type: 'baseline' | 'use_case';
@@ -145,6 +175,116 @@ function formatDbu(val: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+function ForecastDomainCharts({
+  forecastData, activeAccounts, activeScenario, months,
+}: {
+  forecastData: Record<string, ForecastData>;
+  activeAccounts: AccountConfig[];
+  activeScenario: number;
+  months: number;
+}) {
+  const [viewMode, setViewMode] = useState<'yearly' | 'monthly'>('yearly');
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  // Build domain → monthly values across all accounts
+  const domainMonthly: Record<string, number[]> = {};
+  const monthLabels: string[] = [];
+
+  activeAccounts.forEach(acc => {
+    const fd = forecastData[acc.name];
+    if (!fd) return;
+    if (!monthLabels.length) fd.month_labels.slice(0, months).forEach(l => monthLabels.push(l));
+    fd.rows.forEach(row => {
+      const domain = row.domain || (row.type === 'baseline' ? 'Baseline' : 'Other');
+      if (!domainMonthly[domain]) domainMonthly[domain] = new Array(months).fill(0);
+      row.values.slice(0, months).forEach((v, i) => { domainMonthly[domain][i] += v; });
+    });
+  });
+
+  const domains = Object.keys(domainMonthly).sort(
+    (a, b) => domainMonthly[b].reduce((s, v) => s + v, 0) - domainMonthly[a].reduce((s, v) => s + v, 0)
+  );
+
+  // Yearly chart data
+  const yearlyData = ['Year 1', 'Year 2', 'Year 3'].map((yr, yi) => {
+    const entry: Record<string, any> = { period: yr };
+    domains.forEach(d => {
+      entry[d] = Math.round(domainMonthly[d].slice(yi * 12, (yi + 1) * 12).reduce((s, v) => s + v, 0));
+    });
+    return entry;
+  });
+
+  // Monthly chart data
+  const monthlyData = monthLabels.map((label, i) => {
+    const entry: Record<string, any> = { period: label };
+    domains.forEach(d => { entry[d] = Math.round(domainMonthly[d][i] || 0); });
+    return entry;
+  });
+
+  const chartData = viewMode === 'yearly' ? yearlyData : monthlyData;
+  const scenarioLabel = `S${activeScenario}`;
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">
+            {scenarioLabel} — Forecast by Domain
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">All accounts combined · {months}-month projection</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Yearly / Monthly toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+            {(['yearly', 'monthly'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`px-3 py-1.5 font-medium transition-colors capitalize ${
+                  viewMode === m ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          {/* Download */}
+          <button
+            onClick={() => downloadChartAsPng(chartRef, `S${activeScenario}_forecast_by_domain_${viewMode}.png`)}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
+            title="Download chart as PNG"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            PNG
+          </button>
+        </div>
+      </div>
+      <div ref={chartRef}>
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: viewMode === 'monthly' ? 20 : 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+            <XAxis
+              dataKey="period"
+              tick={{ fontSize: viewMode === 'monthly' ? 9 : 11 }}
+              angle={viewMode === 'monthly' ? -35 : 0}
+              textAnchor={viewMode === 'monthly' ? 'end' : 'middle'}
+              interval={viewMode === 'monthly' ? Math.floor(months / 12) : 0}
+            />
+            <YAxis tickFormatter={(v: number) => formatCurrency(v)} tick={{ fontSize: 10 }} width={78} />
+            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            {domains.map((d, i) => (
+              <Bar key={d} dataKey={d} stackId="a" fill={CHART_COLORS[i % CHART_COLORS.length]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
 export default function ConsumptionForecastTab({ accounts }: { accounts: AccountConfig[] }) {
   const [activeScenario, setActiveScenario] = useState<1 | 2 | 3>(1);
@@ -685,6 +825,16 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
             </div>
           )}
         </div>
+      )}
+
+      {/* Domain Forecast Charts */}
+      {!loading && Object.keys(forecastData).length > 0 && (
+        <ForecastDomainCharts
+          forecastData={forecastData}
+          activeAccounts={activeAccounts}
+          activeScenario={activeScenario}
+          months={months}
+        />
       )}
     </div>
   );
