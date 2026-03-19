@@ -30,6 +30,7 @@ export interface ScenarioExportData {
   baseYearTotals: number[];
   ucYearTotals: number[];
   yearTotals: number[];
+  baselineOverrides?: Record<number, number>; // monthIndex(0-35) -> overridden value
 }
 
 export interface AccountExportData {
@@ -323,7 +324,8 @@ function buildProjectionSheetMulti(
 
     const { activeUseCases, baselineMonths, totalMonths,
             baseYearTotals, ucYearTotals, yearTotals,
-            baselineGrowthRate, assumptions } = sd;
+            baselineGrowthRate, assumptions, baselineOverrides } = sd;
+    const overriddenMonths = new Set(Object.keys(baselineOverrides || {}).map(Number));
 
     // Helper: merge-style sub-group header across all columns
     const addGroupHeader = (label: string, bgHex: string, fgHex: string) => {
@@ -356,10 +358,19 @@ function buildProjectionSheetMulti(
     addGroupHeader('  $DBU — Monthly Spend', 'DBEAFE', '1E3A5F');
 
     // Baseline $DBU
-    addDataRow(
+    const baselineRow = addDataRow(
       'Baseline (Existing Consumption)', baselineMonths,
       { ...dataStyle(false), font: { bold: true, size: 10, name: 'Calibri', color: rgb('374151') } }
     );
+    // Amber fill for overridden baseline cells
+    if (overriddenMonths.size > 0) {
+      overriddenMonths.forEach(mi => {
+        const cell = baselineRow.getCell(mi + 2); // col 1 = label, col 2 = M1 (index 0)
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('FEF3C7') };
+        cell.font = { bold: true, size: 10, name: 'Calibri', color: rgb('92400E') };
+        cell.border = { ...cell.border, left: { style: 'medium', color: rgb('F59E0B') } };
+      });
+    }
 
     // Collect UC data so we can reuse it for the DBU group
     const ucMonthTotals = new Array(36).fill(0);
@@ -403,7 +414,14 @@ function buildProjectionSheetMulti(
     ws.addRow([]);
     addGroupHeader('  DBUs — Monthly Consumption', 'D1FAE5', '065F46');
 
-    addDbuRow('Baseline (Existing Consumption) — DBUs', baselineMonths, 'F3F4F6', 0);
+    const baselineDbuRow = addDbuRow('Baseline (Existing Consumption) — DBUs', baselineMonths, 'F3F4F6', 0);
+    if (overriddenMonths.size > 0) {
+      overriddenMonths.forEach(mi => {
+        const cell = baselineDbuRow.getCell(mi + 2);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('FEF3C7') };
+        cell.font = { size: 8, name: 'Calibri', italic: true, color: rgb('92400E') };
+      });
+    }
 
     ucItems.forEach(({ label, months, bgIdx, skus }) => {
       addDbuRow(`${label} — DBUs`, months, bgIdx % 2 === 0 ? 'F9FAFB' : 'FFFFFF', 1);

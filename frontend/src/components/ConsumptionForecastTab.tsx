@@ -11,6 +11,7 @@ interface ForecastRow {
   onboarding_month: number | null;
   live_month: number | null;
   steady_state_dbu: number | null;
+  overridden_month_indices?: number[];
 }
 
 interface ForecastData {
@@ -47,6 +48,7 @@ interface ScenarioData {
   baseline_growth_rate: number;
   assumptions_text: string;
   new_use_cases: UseCase[];
+  baseline_overrides?: { month_index: number; value: number }[];
   version: number;
 }
 
@@ -510,6 +512,10 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                       <span className="inline-block w-3 h-3 rounded-sm bg-green-200 border border-green-500" />
                       Goes live (steady state)
                     </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-3 rounded-sm bg-amber-50 border-l-2 border-amber-400" />
+                      Manual baseline override
+                    </span>
                     <span className="flex items-center gap-1.5 text-slate-400">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -551,6 +557,10 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         const isExpanded = !collapsedUCIds.has(row.id);
                         const rate = dbuRate(ucData);
 
+                        const overriddenSet = isBaseline
+                          ? new Set(row.overridden_month_indices || [])
+                          : new Set<number>();
+
                         return (
                           <React.Fragment key={row.id}>
                             <tr
@@ -580,6 +590,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                               <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">{row.domain}</td>
                               {row.values.map((v, i) => {
                                 const monthNum = i + 1;
+                                const isOverriddenCell = overriddenSet.has(i);
                                 const highlight = !isBaseline
                                   ? (monthNum === om ? 'onboarding' : monthNum === lm ? 'live' : null)
                                   : null;
@@ -589,9 +600,17 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                                     <td key={i} className={`px-2 py-1.5 text-right text-xs font-mono whitespace-nowrap ${
                                       highlight === 'onboarding' ? 'bg-amber-200 text-amber-900 font-bold border-x-2 border-amber-500'
                                       : highlight === 'live'     ? 'bg-green-200 text-green-900 font-bold border-x-2 border-green-500'
+                                      : isOverriddenCell         ? 'bg-amber-50 text-amber-900 border-l-2 border-amber-400'
                                       : 'text-slate-600'
-                                    }`}>
+                                    }`} title={isOverriddenCell ? 'Manual override' : undefined}>
                                       {dbuVal > 0 ? formatDbu(dbuVal) : <span className="text-slate-300">—</span>}
+                                    </td>
+                                  );
+                                }
+                                if (isOverriddenCell) {
+                                  return (
+                                    <td key={i} className="px-2 py-1.5 text-right text-xs font-mono whitespace-nowrap bg-amber-50 text-amber-900 font-semibold border-l-2 border-amber-400" title="Manual override">
+                                      {formatCurrency(v)}
                                     </td>
                                   );
                                 }

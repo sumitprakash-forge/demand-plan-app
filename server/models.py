@@ -9,6 +9,7 @@ class ScenarioAssumptions(BaseModel):
     growth_rates: dict[str, float] = {}  # legacy: domain -> growth rate (optional)
     assumptions_text: str = ""
     new_use_cases: list[dict] = []  # [{id, name, domain, steadyStateDbu, onboardingMonth, liveMonth, rampType, scenarios}]
+    baseline_overrides: list[dict] = []  # [{month_index: int (0-35), value: float}]
     serverless_uplift_pct: float = 0.0  # legacy (optional)
     global_growth_rate: float = 0.02  # legacy alias (optional)
     version: int = 0  # optimistic locking — incremented on each save

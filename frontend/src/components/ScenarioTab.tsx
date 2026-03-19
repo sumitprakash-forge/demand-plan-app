@@ -190,6 +190,8 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expandedBaseline, setExpandedBaseline] = useState(true);
+  const [expandedOverrides, setExpandedOverrides] = useState(false);
+  const [baselineOverrides, setBaselineOverrides] = useState<Record<number, number>>({}); // monthIndex(0-35) -> value
   const [expandedUC, setExpandedUC] = useState<string | null>(null);
 
   // SKU price data
@@ -244,6 +246,9 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
       setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
       setAssumptionsText(data.assumptions_text || '');
       setNewUseCases(parseUCs(data.new_use_cases || []));
+      const ovMap: Record<number, number> = {};
+      (data.baseline_overrides || []).forEach((o: any) => { ovMap[o.month_index] = o.value; });
+      setBaselineOverrides(ovMap);
       setVersion(data.version || 0);
       setIsDirty(false);
 
@@ -291,6 +296,9 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
       const data = await fetchScenario(account, s);
       setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
       setAssumptionsText(data.assumptions_text || '');
+      const ovMap: Record<number, number> = {};
+      (data.baseline_overrides || []).forEach((o: any) => { ovMap[o.month_index] = o.value; });
+      setBaselineOverrides(ovMap);
       setVersion(data.version || 0);
       // If the new scenario has no use cases saved yet, propagate current ones to it
       if ((data.new_use_cases || []).length === 0 && currentUCs.length > 0) {
@@ -310,7 +318,8 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     // Auto-save current use cases before switching — skip if still loading to avoid wiping data
     if (!loading) {
       try {
-        const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, version });
+        const overridesArr = Object.entries(baselineOverrides).map(([k, v]) => ({ month_index: Number(k), value: v }));
+      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
         setVersion(res.version);
       } catch (e) {
         if (e instanceof ConflictError) { setConflictError(true); return; }
@@ -327,7 +336,8 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     setSaved(false);
     try {
       // Each scenario maintains its own independent use case list
-      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, version });
+      const overridesArr = Object.entries(baselineOverrides).map(([k, v]) => ({ month_index: Number(k), value: v }));
+      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
       setVersion(res.version);
       setSaved(true);
       setIsDirty(false);
@@ -423,10 +433,11 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     const momRate = baselineGrowthRate / 100 / 12;
     const totalBaselineMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
 
-    // Baseline projection (all historical consumption with growth)
+    // Baseline projection (all historical consumption with growth, overrides applied)
     const baselineMonths = new Array(36).fill(0);
     for (let i = 0; i < 36; i++) {
-      baselineMonths[i] = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
+      const computed = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
+      baselineMonths[i] = i in baselineOverrides ? baselineOverrides[i] : computed;
     }
 
     // New use case projections (only for current scenario)
@@ -449,7 +460,7 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     }
 
     return { baselineMonths, ucMonths, totalMonths, yearTotals, baseYearTotals, ucYearTotals };
-  }, [domainBaselines, baselineGrowthRate, activeUseCases]);
+  }, [domainBaselines, baselineGrowthRate, activeUseCases, baselineOverrides]);
 
   const totalBaseline = domainBaselines.reduce((s, b) => s + b.t12m, 0);
 
@@ -595,6 +606,97 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
                   placeholder="e.g., 2% MoM organic growth from data volume increase, new workloads ramping Q2..." />
               </div>
             </div>
+          </div>
+
+          {/* Monthly Baseline Overrides */}
+          <div className="bg-white rounded-lg shadow">
+            <button
+              onClick={() => setExpandedOverrides(!expandedOverrides)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+            >
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-700">Monthly Baseline Overrides</h3>
+                {Object.keys(baselineOverrides).length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                    {Object.keys(baselineOverrides).length} overridden
+                  </span>
+                )}
+                <span className="text-xs text-gray-400">Override specific months — overridden cells shown in amber everywhere</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {Object.keys(baselineOverrides).length > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setIsDirty(true); setBaselineOverrides({}); }}
+                    className="text-xs text-red-500 hover:text-red-700 px-2 py-0.5 rounded border border-red-200 hover:bg-red-50"
+                  >
+                    Clear All
+                  </button>
+                )}
+                <svg className={`w-4 h-4 text-gray-400 transition-transform ${expandedOverrides ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </button>
+            {expandedOverrides && (
+              <div className="border-t px-4 py-4">
+                <div className="overflow-x-auto">
+                  <div className="flex gap-1 pb-2" style={{ minWidth: 'max-content' }}>
+                    {Array.from({ length: 36 }, (_, i) => {
+                      const monthLabel = getMonthLabel(i + 1, contractStartDate);
+                      const isOverridden = i in baselineOverrides;
+                      const totalBaselineMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
+                      const momRate = baselineGrowthRate / 100 / 12;
+                      const computed = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
+                      return (
+                        <div key={i} className="flex flex-col items-center" style={{ minWidth: 72 }}>
+                          <div className="text-[9px] text-gray-400 text-center mb-1 leading-tight whitespace-pre-line">
+                            {monthLabel.replace(' (', '\n(').replace(')', '')}
+                          </div>
+                          <input
+                            type="number"
+                            value={isOverridden ? baselineOverrides[i] : ''}
+                            placeholder={Math.round(computed).toLocaleString()}
+                            onChange={(e) => {
+                              setIsDirty(true);
+                              const val = e.target.value.trim();
+                              if (val === '') {
+                                const next = { ...baselineOverrides };
+                                delete next[i];
+                                setBaselineOverrides(next);
+                              } else {
+                                setBaselineOverrides(prev => ({ ...prev, [i]: parseFloat(val) || 0 }));
+                              }
+                            }}
+                            className={`w-full text-xs text-right rounded border px-1 py-1 font-mono focus:outline-none focus:ring-1 ${
+                              isOverridden
+                                ? 'bg-amber-50 border-amber-400 text-amber-900 font-semibold focus:ring-amber-400'
+                                : 'bg-white border-gray-200 text-gray-400 focus:ring-blue-400'
+                            }`}
+                          />
+                          {isOverridden && (
+                            <button
+                              onClick={() => {
+                                setIsDirty(true);
+                                const next = { ...baselineOverrides };
+                                delete next[i];
+                                setBaselineOverrides(next);
+                              }}
+                              className="text-[9px] text-amber-600 hover:text-red-600 mt-0.5"
+                              title="Reset to computed"
+                            >
+                              ✕ reset
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-2">
+                  Type a value to override that month's baseline. Leave blank to use the computed growth-rate projection. Clear individual cells with ✕ reset or use Clear All above.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Projection Summary */}

@@ -111,7 +111,7 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
 
 function DatabricksStep({ status, onDone }: { status: SetupStatus | null; onDone: () => void }) {
   const done = status?.databricks ?? false;
-  const [host, setHost] = useState(status?.host || '');
+  const [host, setHost] = useState(status?.host || 'https://adb-2548836972759138.18.azuredatabricks.net');
   const [token, setToken] = useState('');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState(status?.warehouse_id || '');
@@ -121,6 +121,7 @@ function DatabricksStep({ status, onDone }: { status: SetupStatus | null; onDone
 
   useEffect(() => {
     if (status?.host) setHost(status.host);
+    else setHost('https://adb-2548836972759138.18.azuredatabricks.net');
     if (status?.warehouse_id) setSelectedWarehouse(status.warehouse_id);
     if (status?.databricks) setStep('warehouse');
   }, [status]);

@@ -164,7 +164,12 @@ export default function App() {
         const sr = scenarioRess[idx];
         const growthRate = sr.baseline_growth_rate || 0.02;
         const momRate = growthRate / 12;
-        const baselineMonths = Array.from({ length: 36 }, (_, i) => totalBaseMonthly * Math.pow(1 + momRate, i + 1));
+        const overridesMap: Record<number, number> = {};
+        (sr.baseline_overrides || []).forEach((o: any) => { overridesMap[o.month_index] = o.value; });
+        const baselineMonths = Array.from({ length: 36 }, (_, i) => {
+          const computed = totalBaseMonthly * Math.pow(1 + momRate, i + 1);
+          return i in overridesMap ? overridesMap[i] : computed;
+        });
 
         const allUCs = (sr.new_use_cases || []).map((uc: any) => ({
           ...uc,
@@ -191,12 +196,16 @@ export default function App() {
           yearTotals[y] += totalMonths[i];
         }
 
+        const baselineOverrides: Record<number, number> = {};
+        (sr.baseline_overrides || []).forEach((o: any) => { baselineOverrides[o.month_index] = o.value; });
+
         return {
           scenarioNum: sNum,
           assumptions: sr.assumptions_text || '',
           baselineGrowthRate: growthRate * 100,
           activeUseCases,
           baselineMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals,
+          baselineOverrides,
         };
       });
 

@@ -495,8 +495,18 @@ async def get_consumption_forecast(
     baseline_growth = (scenario_data or {}).get("baseline_growth_rate", 0.02)
     mom_rate = baseline_growth / 12
 
-    # Baseline row (months values)
-    baseline_values = [round(avg_monthly * ((1 + mom_rate) ** (i + 1))) for i in range(months)]
+    # Apply per-month baseline overrides
+    overrides_raw = (scenario_data or {}).get("baseline_overrides", [])
+    overrides_map = {int(o["month_index"]): float(o["value"]) for o in overrides_raw}
+    baseline_values = []
+    overridden_month_indices = []
+    for i in range(months):
+        computed = avg_monthly * ((1 + mom_rate) ** (i + 1))
+        if i in overrides_map:
+            baseline_values.append(round(overrides_map[i]))
+            overridden_month_indices.append(i)
+        else:
+            baseline_values.append(round(computed))
 
     rows = [{
         "type": "baseline",
@@ -507,6 +517,7 @@ async def get_consumption_forecast(
         "onboarding_month": None,
         "live_month": None,
         "steady_state_dbu": None,
+        "overridden_month_indices": overridden_month_indices,
     }]
 
     # Use case rows — only active in this scenario
