@@ -371,7 +371,7 @@ Sheets included:
 
 Excel uploaded to Google Drive:
 - **File:** `Demand_Plan_Kroger_84.51_AllScenarios_2026-03-19.xlsx`
-- **Drive URL:** https://drive.google.com/file/d/1ThZrK5vRU04nI0vT6kt0amZTudju3Hqu/view
+- **Drive URL:** https://docs.google.com/spreadsheets/d/1KEQN_0gDhcYqcDkMTFvqIw3IIWB6-xQY/edit?gid=1109993579#gid=1109993579
 
 ![Drive Upload Toast](guide-screenshots/31_drive_upload_success.png)
 
