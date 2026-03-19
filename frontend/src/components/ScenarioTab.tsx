@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMapping, fetchSkuPrices, formatCurrency } from '../api';
+import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMapping, fetchSkuPrices, formatCurrency, ConflictError } from '../api';
 import type { AccountConfig } from '../App';
 
 interface Props {
@@ -183,6 +183,8 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
   const [newUseCases, setNewUseCases] = useState<NewUseCase[]>([]);
   const [domainBaselines, setDomainBaselines] = useState<DomainBaseline[]>([]);
   const [domains, setDomains] = useState<string[]>([]);
+  const [version, setVersion] = useState(0);
+  const [conflictError, setConflictError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -242,6 +244,7 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
       setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
       setAssumptionsText(data.assumptions_text || '');
       setNewUseCases(parseUCs(data.new_use_cases || []));
+      setVersion(data.version || 0);
       setIsDirty(false);
 
       // Load historical consumption as baseline
@@ -288,12 +291,15 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
       const data = await fetchScenario(account, s);
       setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
       setAssumptionsText(data.assumptions_text || '');
+      setVersion(data.version || 0);
       // If the new scenario has no use cases saved yet, propagate current ones to it
       if ((data.new_use_cases || []).length === 0 && currentUCs.length > 0) {
-        await saveScenario({ scenario_id: s, account, baseline_growth_rate: (data.baseline_growth_rate || 0.02), assumptions_text: data.assumptions_text || '', new_use_cases: currentUCs });
+        const res = await saveScenario({ scenario_id: s, account, baseline_growth_rate: (data.baseline_growth_rate || 0.02), assumptions_text: data.assumptions_text || '', new_use_cases: currentUCs, version: data.version || 0 });
+        setVersion(res.version);
       }
     } catch (e) {
-      console.error(e);
+      if (e instanceof ConflictError) setConflictError(true);
+      else console.error(e);
     }
   };
 
@@ -303,7 +309,13 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     if (s === scenario) return;
     // Auto-save current use cases before switching — skip if still loading to avoid wiping data
     if (!loading) {
-      await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases });
+      try {
+        const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, version });
+        setVersion(res.version);
+      } catch (e) {
+        if (e instanceof ConflictError) { setConflictError(true); return; }
+        console.error(e);
+      }
     }
     setScenario(s);
     await loadScenarioSettings(s, newUseCases);
@@ -315,12 +327,15 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     setSaved(false);
     try {
       // Each scenario maintains its own independent use case list
-      await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases });
+      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, version });
+      setVersion(res.version);
       setSaved(true);
       setIsDirty(false);
       setTimeout(() => setSaved(false), 3000);
-    } catch (e) { console.error(e); }
-    finally { setSaving(false); }
+    } catch (e) {
+      if (e instanceof ConflictError) setConflictError(true);
+      else console.error(e);
+    } finally { setSaving(false); }
   };
 
   const addNewUseCase = () => {
@@ -440,6 +455,25 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
 
   return (
     <div className="space-y-6">
+      {/* Conflict modal */}
+      {conflictError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-red-700 mb-2">Save conflict</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Another tab or user saved this scenario while you were editing. Reload to get the latest version — your unsaved changes will be lost.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConflictError(false)} className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+                Keep editing
+              </button>
+              <button onClick={() => { setConflictError(false); loadFull(); }} className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700">
+                Reload latest
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex gap-2">

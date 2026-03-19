@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchConsumptionForecast, fetchScenario, saveScenario, formatCurrency } from '../api';
+import { fetchConsumptionForecast, fetchScenario, saveScenario, formatCurrency, ConflictError } from '../api';
 import type { AccountConfig } from '../App';
 
 interface ForecastRow {
@@ -39,6 +39,7 @@ interface ScenarioData {
   baseline_growth_rate: number;
   assumptions_text: string;
   new_use_cases: UseCase[];
+  version: number;
 }
 
 const SCENARIO_COLORS = {
@@ -122,6 +123,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [months, setMonths] = useState(24);
+  const [conflictAccount, setConflictAccount] = useState<string | null>(null);
 
   const activeAccounts = accounts.filter(a => a.name);
 
@@ -163,10 +165,13 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
     try {
       const acctConfig = accounts.find(a => a.name === account);
       const sfdc = acctConfig?.sfdc_id || account;
-      await saveScenario({ ...updated, scenario_id: activeScenario, account: sfdc });
+      const res = await saveScenario({ ...updated, scenario_id: activeScenario, account: sfdc });
+      setScenarioData(prev => ({ ...prev, [account]: { ...updated, version: res.version } }));
       const forecast = await fetchConsumptionForecast(sfdc, activeScenario, months, acctConfig?.contractStartDate || '');
       setForecastData(prev => ({ ...prev, [account]: forecast }));
-    } catch { /* silent */ }
+    } catch (e) {
+      if (e instanceof ConflictError) setConflictAccount(account);
+    }
     setSaving(false);
   };
 
@@ -175,12 +180,13 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
       setSaving(true);
       try {
         await Promise.all(
-          Object.entries(scenarioData).map(([account, sd]) => {
+          Object.entries(scenarioData).map(async ([account, sd]) => {
             const sfdc = accounts.find(a => a.name === account)?.sfdc_id || account;
-            return saveScenario({ ...sd, scenario_id: activeScenario, account: sfdc });
+            const res = await saveScenario({ ...sd, scenario_id: activeScenario, account: sfdc });
+            setScenarioData(prev => ({ ...prev, [account]: { ...sd, version: res.version } }));
           })
         );
-      } catch { /* silent */ }
+      } catch (e) { /* conflict on switch is non-critical; new scenario loads fresh */ }
       setSaving(false);
     }
     setActiveScenario(s);
@@ -216,6 +222,25 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
 
   return (
     <div className="space-y-4">
+      {/* Conflict modal */}
+      {conflictAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-red-700 mb-2">Save conflict</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Another tab or user saved <strong>{conflictAccount}</strong>'s scenario while you were editing. Reload to get the latest version — your unsaved changes will be lost.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConflictAccount(null)} className="px-3 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-50">
+                Keep editing
+              </button>
+              <button onClick={() => { setConflictAccount(null); loadData(activeScenario); }} className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700">
+                Reload latest
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

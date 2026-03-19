@@ -11,6 +11,7 @@ class ScenarioAssumptions(BaseModel):
     new_use_cases: list[dict] = []  # [{id, name, domain, steadyStateDbu, onboardingMonth, liveMonth, rampType, scenarios}]
     serverless_uplift_pct: float = 0.0  # legacy (optional)
     global_growth_rate: float = 0.02  # legacy alias (optional)
+    version: int = 0  # optimistic locking — incremented on each save
 
 
 class ForecastOverride(BaseModel):

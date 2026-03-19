@@ -6,6 +6,7 @@ import ScenarioTab from './components/ScenarioTab';
 import OverviewTab from './components/OverviewTab';
 import ConsumptionForecastTab from './components/ConsumptionForecastTab';
 import { exportToXLS } from './export';
+import { exportToExcelJS } from './exportExcelJS';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
 
 export interface AccountConfig {
@@ -116,46 +117,50 @@ export default function App() {
     window.location.reload();
   }, []);
 
-  const handleExportXLS = useCallback(async (scenarioNum: number) => {
-    setExporting(true);
-    setShowExportMenu(false);
-    try {
-      // Export using the first account for historical data (summary sheet shows all)
-      const account = accounts[0]?.sfdc_id || 'Unknown';
-      const sheetUrl = accounts[0]?.sheetUrl || '';
+  // Shared data-fetch + projection builder used by both export handlers
+  const buildExportPayload = useCallback(async () => {
+    const account = accounts[0]?.sfdc_id || 'Unknown';
+    const sheetUrl = accounts[0]?.sheetUrl || '';
 
-      // Fetch all data
-      const [consumptionRes, mappingRes, scenarioRes] = await Promise.all([
-        fetchConsumption(account),
-        sheetUrl ? fetchDomainMapping(sheetUrl) : Promise.resolve({ mapping: [] }),
-        fetchScenario(account, scenarioNum),
-      ]);
+    const [consumptionRes, mappingRes, s1Res, s2Res, s3Res] = await Promise.all([
+      fetchConsumption(account),
+      sheetUrl ? fetchDomainMapping(sheetUrl) : Promise.resolve({ mapping: [] }),
+      fetchScenario(account, 1),
+      fetchScenario(account, 2),
+      fetchScenario(account, 3),
+    ]);
 
-      const historicalData = consumptionRes.data || [];
-      const domainMapping: Record<string, string> = {};
-      const wsCloud: Record<string, string> = {};
-      const wsOrg: Record<string, string> = {};
-      (mappingRes.mapping || []).forEach((r: any) => {
-        domainMapping[r.workspace] = r.domain;
-        if (r.cloudtype) wsCloud[r.workspace] = r.cloudtype;
-        if (r.org) wsOrg[r.workspace] = r.org;
-      });
+    const historicalData = consumptionRes.data || [];
+    const domainMapping: Record<string, string> = {};
+    const wsCloud: Record<string, string> = {};
+    const wsOrg: Record<string, string> = {};
+    (mappingRes.mapping || []).forEach((r: any) => {
+      domainMapping[r.workspace] = r.domain;
+      if (r.cloudtype) wsCloud[r.workspace] = r.cloudtype;
+      if (r.org) wsOrg[r.workspace] = r.org;
+    });
 
-      // Build domain baselines
-      const domMonthly: Record<string, Record<string, number>> = {};
-      historicalData.forEach((row: any) => {
-        const domain = domainMapping[row.workspace_name] || 'Unmapped';
-        if (!domMonthly[domain]) domMonthly[domain] = {};
-        domMonthly[domain][row.month] = (domMonthly[domain][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
-      });
-      const domainBaselines = Object.entries(domMonthly).map(([domain, mData]) => {
-        const t12m = Object.values(mData).reduce((s, v) => s + v, 0);
-        const monthCount = Object.keys(mData).length;
-        return { domain, t12m, avgMonthly: t12m / Math.max(monthCount, 1) };
-      }).sort((a, b) => b.t12m - a.t12m);
+    const domMonthly: Record<string, Record<string, number>> = {};
+    historicalData.forEach((row: any) => {
+      const domain = domainMapping[row.workspace_name] || 'Unmapped';
+      if (!domMonthly[domain]) domMonthly[domain] = {};
+      domMonthly[domain][row.month] = (domMonthly[domain][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
+    });
+    const domainBaselines = Object.entries(domMonthly).map(([domain, mData]) => {
+      const t12m = Object.values(mData).reduce((s, v) => s + v, 0);
+      return { domain, t12m, avgMonthly: t12m / Math.max(Object.keys(mData).length, 1) };
+    }).sort((a, b) => b.t12m - a.t12m);
 
-      // Build use cases with monthly projections
-      const useCases = (scenarioRes.new_use_cases || []).map((uc: any) => ({
+    const totalBaseMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
+
+    const scenarioRess = [s1Res, s2Res, s3Res];
+    const scenariosData = ([1, 2, 3] as const).map((sNum, idx) => {
+      const sr = scenarioRess[idx];
+      const growthRate = sr.baseline_growth_rate || 0.02;
+      const momRate = growthRate / 12;
+      const baselineMonths = Array.from({ length: 36 }, (_, i) => totalBaseMonthly * Math.pow(1 + momRate, i + 1));
+
+      const allUCs = (sr.new_use_cases || []).map((uc: any) => ({
         ...uc,
         steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
         onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
@@ -164,23 +169,15 @@ export default function App() {
         scenarios: uc.scenarios || [true, false, false],
         monthlyProjection: calcUseCaseMonthly(uc),
       }));
-
-      // Build projections
-      const growthRate = scenarioRes.baseline_growth_rate || 0.02;
-      const momRate = growthRate / 12;
-      const totalBaseMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
-      const baselineMonths = Array.from({ length: 36 }, (_, i) => totalBaseMonthly * Math.pow(1 + momRate, i + 1));
+      const activeUseCases = allUCs.filter((uc: any) => uc.scenarios[sNum - 1]);
 
       const ucMonths = new Array(36).fill(0);
-      useCases.filter((uc: any) => uc.scenarios[scenarioNum - 1]).forEach((uc: any) => {
-        const ucM = calcUseCaseMonthly(uc);
-        ucM.forEach((v: number, i: number) => { ucMonths[i] += v; });
+      activeUseCases.forEach((uc: any) => {
+        uc.monthlyProjection.forEach((v: number, i: number) => { ucMonths[i] += v; });
       });
 
       const totalMonths = baselineMonths.map((b, i) => b + ucMonths[i]);
-      const baseYearTotals = [0, 0, 0];
-      const ucYearTotals = [0, 0, 0];
-      const yearTotals = [0, 0, 0];
+      const baseYearTotals = [0, 0, 0], ucYearTotals = [0, 0, 0], yearTotals = [0, 0, 0];
       for (let i = 0; i < 36; i++) {
         const y = Math.floor(i / 12);
         baseYearTotals[y] += baselineMonths[i];
@@ -188,29 +185,58 @@ export default function App() {
         yearTotals[y] += totalMonths[i];
       }
 
-      const filename = await exportToXLS({
-        accounts,
-        account,
-        scenario: scenarioNum,
-        historicalData,
-        domainMapping,
-        wsCloud,
-        wsOrg,
+      return {
+        scenarioNum: sNum,
+        assumptions: sr.assumptions_text || '',
         baselineGrowthRate: growthRate * 100,
-        assumptions: scenarioRes.assumptions_text || '',
-        domainBaselines,
-        useCases,
-        projections: { baseYearTotals, ucYearTotals, yearTotals, baselineMonths, totalMonths },
-      });
+        activeUseCases,
+        baselineMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals,
+      };
+    });
 
-      console.log('Exported:', filename);
+    // allUseCases: use S1's list (most complete — others copy from it)
+    const allUseCases = (s1Res.new_use_cases || []).map((uc: any) => ({
+      ...uc,
+      steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
+      onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
+      liveMonth: uc.liveMonth || uc.live_month || 6,
+      rampType: uc.rampType || uc.ramp_type || 'linear',
+      scenarios: uc.scenarios || [true, false, false],
+      monthlyProjection: calcUseCaseMonthly(uc),
+    }));
+
+    return { account, historicalData, domainMapping, wsCloud, wsOrg, domainBaselines, allUseCases, scenariosData };
+  }, [accounts]);
+
+  const handleExportFormatted = useCallback(async () => {
+    setExporting(true);
+    setShowExportMenu(false);
+    try {
+      const payload = await buildExportPayload();
+      const filename = await exportToExcelJS({ accounts, ...payload });
+      console.log('Formatted export:', filename);
     } catch (e: any) {
-      console.error('Export failed:', e);
+      console.error('Formatted export failed:', e);
       alert('Export failed: ' + e.message);
     } finally {
       setExporting(false);
     }
-  }, [accounts]);
+  }, [accounts, buildExportPayload]);
+
+  const handleExportXLS = useCallback(async () => {
+    setExporting(true);
+    setShowExportMenu(false);
+    try {
+      const payload = await buildExportPayload();
+      const filename = await exportToXLS({ accounts, ...payload });
+      console.log('Basic export:', filename);
+    } catch (e: any) {
+      console.error('Basic export failed:', e);
+      alert('Export failed: ' + e.message);
+    } finally {
+      setExporting(false);
+    }
+  }, [accounts, buildExportPayload]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -353,20 +379,31 @@ export default function App() {
                 </button>
 
                 {showExportMenu && (
-                  <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                    <div className="px-3 py-2 text-xs font-medium text-gray-400 uppercase">Download as Excel</div>
-                    {[1, 2, 3].map(s => (
-                      <button key={s} onClick={() => handleExportXLS(s)}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2">
-                        <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Scenario {s} — Full Export
-                      </button>
-                    ))}
-                    <div className="border-t my-1" />
-                    <div className="px-3 py-1.5 text-[10px] text-gray-400">
-                      Includes: Summary, Historical (Domain/SKU/Cloud), 36-Month Projections, Use Cases, Baselines
+                  <div className="absolute right-0 mt-1 w-60 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button onClick={handleExportFormatted}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-3">
+                      <svg className="w-5 h-5 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                      <div>
+                        <div className="font-medium text-indigo-700">Formatted Export</div>
+                        <div className="text-[11px] text-gray-400">Colors, headers, freeze panes</div>
+                      </div>
+                    </button>
+                    <div className="border-t border-gray-100" />
+                    <button onClick={handleExportXLS}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
+                      <svg className="w-5 h-5 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <div>
+                        <div className="font-medium">Basic Export</div>
+                        <div className="text-[11px] text-gray-400">Plain data, all scenarios</div>
+                      </div>
+                    </button>
+                    <div className="border-t border-gray-100 mt-1" />
+                    <div className="px-4 py-1.5 text-[10px] text-gray-400">
+                      Exports all 3 scenarios · 10 sheets
                     </div>
                   </div>
                 )}

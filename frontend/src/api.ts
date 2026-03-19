@@ -1,5 +1,9 @@
 const BASE = '/api';
 
+export class ConflictError extends Error {
+  constructor() { super('conflict'); this.name = 'ConflictError'; }
+}
+
 export async function fetchDomainMapping(sheetUrl: string) {
   const res = await fetch(`${BASE}/domain-mapping?sheet_url=${encodeURIComponent(sheetUrl)}`);
   if (!res.ok) throw new Error(await res.text());
@@ -48,8 +52,9 @@ export async function saveScenario(data: any) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (res.status === 409) throw new ConflictError();
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return res.json(); // includes { version: number }
 }
 
 export async function fetchForecast(account: string) {

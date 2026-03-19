@@ -535,11 +535,22 @@ async def get_summary_all(account: str = Query(default="Walmart")):
 
 @app.post("/api/scenario")
 async def save_scenario(data: ScenarioAssumptions):
-    """Save scenario assumptions."""
+    """Save scenario assumptions with optimistic locking."""
     key = f"{data.account}_{data.scenario_id}"
+    current = _scenarios.get(key)
+    if current is None:
+        cached = _load_json(f"scenario_{key}")
+        if cached:
+            current = ScenarioAssumptions(**cached)
+    if current is not None and data.version != current.version:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Conflict: scenario was modified by another session (your version: {data.version}, current: {current.version})",
+        )
+    data.version = (current.version if current else 0) + 1
     _scenarios[key] = data
     _save_json(f"scenario_{key}", data.model_dump())
-    return {"status": "ok", "key": key}
+    return {"status": "ok", "key": key, "version": data.version}
 
 
 @app.get("/api/scenario")
