@@ -374,12 +374,16 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
     properties: { tabColor: { argb: 'FF' + BRAND } },
   });
 
-  const accountNames = (opts.accounts || []).filter(a => a.name.trim()).map(a => a.name);
-  if (accountNames.length === 0) accountNames.push(opts.account);
+  // Use sfdc_id (the backend cache key) for fetching; display name for labels
+  const acctEntries = (opts.accounts || []).filter(a => a.name.trim()).map(a => ({
+    displayName: a.name,
+    fetchKey: a.sfdc_id?.trim() || a.name,
+  }));
+  if (acctEntries.length === 0) acctEntries.push({ displayName: opts.account, fetchKey: opts.account });
 
   const allSummaries: Record<string, any> = {};
-  await Promise.all(accountNames.map(async (name) => {
-    try { allSummaries[name] = await fetchSummaryAll(name); } catch {}
+  await Promise.all(acctEntries.map(async ({ displayName, fetchKey }) => {
+    try { allSummaries[displayName] = await fetchSummaryAll(fetchKey); } catch {}
   }));
 
   ws.columns = [
@@ -396,7 +400,7 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   for (let si = 0; si < 3; si++) {
     const sNum = si + 1;
     const sc = SCENARIO_COLORS[sNum];
-    const firstAcct = allSummaries[accountNames[0]];
+    const firstAcct = allSummaries[acctEntries[0].displayName];
     const desc = firstAcct?.scenarios?.[si]?.description || `Scenario ${sNum}`;
 
     const secRow = ws.addRow(['', `SCENARIO ${sNum}  ·  ${desc.toUpperCase()}`]);
@@ -414,11 +418,11 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
     sh.height = 20;
 
     let crossY1 = 0, crossY2 = 0, crossY3 = 0, crossTotal = 0;
-    accountNames.forEach((name, idx) => {
-      const gt = allSummaries[name]?.scenarios?.[si]?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
+    acctEntries.forEach(({ displayName }, idx) => {
+      const gt = allSummaries[displayName]?.scenarios?.[si]?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
       const y1 = gt?.year1 || 0, y2 = gt?.year2 || 0, y3 = gt?.year3 || 0, tot = gt?.total || 0;
       crossY1 += y1; crossY2 += y2; crossY3 += y3; crossTotal += tot;
-      const dr = ws.addRow(['', name, y1, y2, y3, tot]);
+      const dr = ws.addRow(['', displayName, y1, y2, y3, tot]);
       applyRowStyle(dr, dataStyle(idx % 2 === 1), USD_FMT);
     });
 
@@ -428,7 +432,7 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
 
     ws.addRow([]);
 
-    accountNames.forEach((name) => {
+    acctEntries.forEach(({ displayName: name }) => {
       const acctData = allSummaries[name]?.scenarios?.[si];
       const grandTotal = acctData?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
       const baseRow = acctData?.summary_rows?.find(
@@ -793,18 +797,19 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   wb.properties.date1904 = false;
 
   // 1. Summary (all accounts)
+  // 1. Summary
   await buildSummarySheet(wb, opts);
 
-  // 2. Historical sheets: one set per account
+  // 2. Projection sheets immediately after summary (S1, S2, S3 combined)
+  for (const sNum of [1, 2, 3] as const) {
+    buildProjectionSheetMulti(wb, sNum, opts.accountsData);
+  }
+
+  // 3. Historical sheets: one set per account
   for (const ad of opts.accountsData) {
     buildHistoricalDomainSheet(wb, ad);
     buildHistoricalSkuSheet(wb, ad);
     buildCloudDomainSkuSheet(wb, ad);
-  }
-
-  // 3. Projection sheets: one per scenario, all accounts combined
-  for (const sNum of [1, 2, 3] as const) {
-    buildProjectionSheetMulti(wb, sNum, opts.accountsData);
   }
 
   // 4. Per-account detail sheets
