@@ -640,7 +640,7 @@ function buildSkuBreakdownSheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
 
 // ─── Main export entry point ──────────────────────────────────────────────────
 
-export async function exportToExcelJS(opts: ExportOptions): Promise<string> {
+async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filename: string }> {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Demand Plan App';
   wb.created = new Date();
@@ -651,7 +651,6 @@ export async function exportToExcelJS(opts: ExportOptions): Promise<string> {
   buildHistoricalSkuSheet(wb, opts);
   buildCloudDomainSkuSheet(wb, opts);
 
-  // One horizontal projection sheet per scenario
   for (const sd of opts.scenariosData) {
     buildProjectionSheet(wb, sd);
   }
@@ -665,6 +664,29 @@ export async function exportToExcelJS(opts: ExportOptions): Promise<string> {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   const filename = `Demand_Plan_${opts.account}_AllScenarios_${new Date().toISOString().split('T')[0]}.xlsx`;
+  return { blob, filename };
+}
+
+export async function exportToExcelJS(opts: ExportOptions): Promise<string> {
+  const { blob, filename } = await buildExcelBlob(opts);
   saveAs(blob, filename);
   return filename;
+}
+
+export async function exportToExcelJSAndUpload(opts: ExportOptions): Promise<{ filename: string; driveUrl: string }> {
+  const { blob, filename } = await buildExcelBlob(opts);
+
+  const form = new FormData();
+  form.append('file', blob, filename);
+
+  const res = await fetch(`/api/export/upload-to-drive?filename=${encodeURIComponent(filename)}`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Upload to Drive failed');
+  }
+  const { url } = await res.json();
+  return { filename, driveUrl: url };
 }

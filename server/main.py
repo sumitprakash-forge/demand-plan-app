@@ -907,6 +907,59 @@ async def accounts_search(q: str = Query(default="")):
 
 
 # ---------------------------------------------------------------------------
+# Upload formatted export to Google Drive
+# ---------------------------------------------------------------------------
+
+@app.post("/api/export/upload-to-drive")
+async def upload_export_to_drive(
+    filename: str = Query(...),
+    file: UploadFile = File(...),
+):
+    """Receive an .xlsx blob from the frontend and upload it to Google Drive."""
+    import httpx
+    from sheets import get_google_token
+
+    try:
+        token = get_google_token()
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Google auth not available: {e}")
+
+    content = await file.read()
+    mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    # Multipart upload to Drive
+    metadata = json.dumps({"name": filename, "mimeType": mime})
+    boundary = "boundary_demand_plan"
+    body = (
+        f"--{boundary}\r\n"
+        f"Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{metadata}\r\n"
+        f"--{boundary}\r\n"
+        f"Content-Type: {mime}\r\n\r\n"
+    ).encode() + content + f"\r\n--{boundary}--".encode()
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": f"multipart/related; boundary={boundary}",
+        "Content-Length": str(len(body)),
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+            headers=headers,
+            content=body,
+        )
+
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Drive upload failed: {resp.text}")
+
+    file_id = resp.json().get("id")
+    url = f"https://drive.google.com/file/d/{file_id}/view"
+    return {"url": url, "file_id": file_id}
+
+
+# ---------------------------------------------------------------------------
 # Serve frontend static files (must be LAST — catches all unmatched routes)
 # ---------------------------------------------------------------------------
 

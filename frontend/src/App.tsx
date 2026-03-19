@@ -7,7 +7,7 @@ import OverviewTab from './components/OverviewTab';
 import ConsumptionForecastTab from './components/ConsumptionForecastTab';
 import SetupTab from './components/SetupTab';
 import { exportToXLS } from './export';
-import { exportToExcelJS } from './exportExcelJS';
+import { exportToExcelJS, exportToExcelJSAndUpload } from './exportExcelJS';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
 
 export interface AccountConfig {
@@ -69,6 +69,7 @@ export default function App() {
   const [clearing, setClearing] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState<Record<string, boolean>>({});
   const [loadStatus, setLoadStatus] = useState<Record<string, 'ok' | 'error'>>({});
+  const [driveToast, setDriveToast] = useState<{ url: string; filename: string } | null>(null);
 
   // Persist accounts to localStorage whenever they change
   useEffect(() => {
@@ -240,6 +241,22 @@ export default function App() {
     }
   }, [accounts, buildExportPayload]);
 
+  const handleUploadToDrive = useCallback(async () => {
+    setExporting(true);
+    setShowExportMenu(false);
+    try {
+      const payload = await buildExportPayload();
+      const { filename, driveUrl } = await exportToExcelJSAndUpload({ accounts, ...payload });
+      setDriveToast({ url: driveUrl, filename });
+      setTimeout(() => setDriveToast(null), 12000);
+    } catch (e: any) {
+      console.error('Drive upload failed:', e);
+      alert('Upload to Drive failed: ' + e.message);
+    } finally {
+      setExporting(false);
+    }
+  }, [accounts, buildExportPayload]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -334,6 +351,17 @@ export default function App() {
                         <div className="text-[11px] text-gray-400">Plain data, all scenarios</div>
                       </div>
                     </button>
+                    <div className="border-t border-gray-100" />
+                    <button onClick={handleUploadToDrive}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3">
+                      <svg className="w-5 h-5 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12.01 2C6.49 2 2.02 6.48 2.02 12s4.47 10 9.99 10C17.53 22 22 17.52 22 12S17.53 2 12.01 2zm3.93 12.37l-3.4 3.4c-.29.29-.77.29-1.06 0l-3.4-3.4a.75.75 0 011.06-1.06l2.12 2.12V8.5a.75.75 0 011.5 0v6.93l2.12-2.12a.75.75 0 011.06 1.06z" />
+                      </svg>
+                      <div>
+                        <div className="font-medium text-blue-700">Upload to Google Drive</div>
+                        <div className="text-[11px] text-gray-400">Formatted export → save to Drive</div>
+                      </div>
+                    </button>
                     <div className="border-t border-gray-100 mt-1" />
                     <div className="px-4 py-1.5 text-[10px] text-gray-400">
                       Exports all 3 scenarios · 10 sheets
@@ -348,6 +376,28 @@ export default function App() {
 
       {/* Click outside to close menu */}
       {showExportMenu && <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />}
+
+      {/* Drive upload toast */}
+      {driveToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-white border border-blue-200 rounded-xl shadow-lg px-5 py-4 flex items-start gap-3 max-w-sm">
+          <svg className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12.01 2C6.49 2 2.02 6.48 2.02 12s4.47 10 9.99 10C17.53 22 22 17.52 22 12S17.53 2 12.01 2zm-1.01 14.5l-3.5-3.5 1.41-1.41L11 13.67l5.09-5.08 1.41 1.41L11 16.5z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-slate-800">Uploaded to Google Drive</p>
+            <p className="text-xs text-slate-500 truncate mt-0.5">{driveToast.filename}</p>
+            <a
+              href={driveToast.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline font-medium mt-1 inline-block"
+            >
+              Open in Drive →
+            </a>
+          </div>
+          <button onClick={() => setDriveToast(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+        </div>
+      )}
 
       {/* Tab Bar */}
       <nav className="bg-white border-b border-gray-200">
