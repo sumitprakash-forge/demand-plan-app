@@ -290,6 +290,8 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const [activeScenario, setActiveScenario] = useState<1 | 2 | 3>(1);
   const [forecastData, setForecastData] = useState<Record<string, ForecastData>>({});
   const [scenarioData, setScenarioData] = useState<Record<string, ScenarioData>>({});
+  // Merged use cases across all 3 scenarios per account
+  const [mergedUseCases, setMergedUseCases] = useState<Record<string, UseCase[]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -308,7 +310,30 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
 
   const activeAccounts = accounts.filter(a => a.name);
 
-  // Load forecast + scenario for all accounts
+  // Merge use cases from all 3 scenarios by ID — OR-ing scenario flags
+  const mergeUseCases = (allScs: ScenarioData[]): UseCase[] => {
+    const map = new Map<string, UseCase>();
+    allScs.forEach(sc => {
+      (sc.new_use_cases || []).forEach(uc => {
+        if (!map.has(uc.id)) {
+          map.set(uc.id, { ...uc, scenarios: [...uc.scenarios] as [boolean, boolean, boolean] });
+        } else {
+          const existing = map.get(uc.id)!;
+          map.set(uc.id, {
+            ...existing,
+            scenarios: [
+              existing.scenarios[0] || uc.scenarios[0],
+              existing.scenarios[1] || uc.scenarios[1],
+              existing.scenarios[2] || uc.scenarios[2],
+            ],
+          });
+        }
+      });
+    });
+    return Array.from(map.values());
+  };
+
+  // Load forecast + all 3 scenario files for all accounts
   const loadData = useCallback(async (scenario: number) => {
     if (!activeAccounts.length) return;
     setLoading(true);
@@ -316,21 +341,28 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
     try {
       const results = await Promise.all(
         activeAccounts.map(async (acc) => {
-          const [forecast, sc] = await Promise.all([
+          const [forecast, sc1, sc2, sc3] = await Promise.all([
             fetchConsumptionForecast(acc.sfdc_id, scenario, months, acc.contractStartDate || ''),
-            fetchScenario(acc.sfdc_id, scenario),
+            fetchScenario(acc.sfdc_id, 1),
+            fetchScenario(acc.sfdc_id, 2),
+            fetchScenario(acc.sfdc_id, 3),
           ]);
-          return { name: acc.name, forecast, scenario: sc };
+          return { name: acc.name, forecast, sc1, sc2, sc3 };
         })
       );
       const fd: Record<string, ForecastData> = {};
       const sd: Record<string, ScenarioData> = {};
+      const mu: Record<string, UseCase[]> = {};
       results.forEach(r => {
         fd[r.name] = r.forecast;
-        sd[r.name] = r.scenario;
+        // Active scenario data (used for baseline growth etc.)
+        sd[r.name] = [r.sc1, r.sc2, r.sc3][scenario - 1];
+        // Merged use cases from all 3 scenarios
+        mu[r.name] = mergeUseCases([r.sc1, r.sc2, r.sc3]);
       });
       setForecastData(fd);
       setScenarioData(sd);
+      setMergedUseCases(mu);
     } catch (e: any) {
       setError(e.message || 'Failed to load forecast');
     } finally {
@@ -393,10 +425,10 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const sc = activeScenario as 1 | 2 | 3;
   const colors = SCENARIO_COLORS[sc];
 
-  // Collect use cases active in the current scenario across accounts
+  // Collect use cases active in the current scenario — from merged view across all 3 scenario files
   const allUseCases: Array<{ account: string; uc: UseCase }> = [];
-  Object.entries(scenarioData).forEach(([account, sd]) => {
-    (sd.new_use_cases || [])
+  Object.entries(mergedUseCases).forEach(([account, ucs]) => {
+    ucs
       .filter(uc => uc.scenarios[activeScenario - 1])
       .forEach(uc => allUseCases.push({ account, uc }));
   });
@@ -696,7 +728,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
 
                         // Find matching UC for SKU breakdown
                         const ucData = !isBaseline
-                          ? (scenarioData[acc.name]?.new_use_cases || []).find(u => u.id === row.id)
+                          ? (mergedUseCases[acc.name] || []).find(u => u.id === row.id)
                           : null;
                         const skus = ucData?.skuBreakdown?.filter(a => a.percentage > 0) || [];
                         const hasSkus = skus.length > 0;
