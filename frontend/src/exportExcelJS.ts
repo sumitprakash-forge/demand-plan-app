@@ -253,6 +253,8 @@ function buildProjectionSheetMulti(
   const ucYearSlice = (vals: number[], yr: number) =>
     vals.slice(yr * 12, (yr + 1) * 12).reduce((s, v) => s + v, 0);
 
+  const DBU_RATE = 1 / 0.20; // $0.20/DBU blended list price
+
   const addDataRow = (
     label: string,
     months: number[],
@@ -284,6 +286,36 @@ function buildProjectionSheetMulti(
     return r;
   };
 
+  // Adds a DBU companion row directly after a $DBU data row
+  const addDbuRow = (
+    label: string,
+    months: number[],
+    bgColor: string,
+    indent = 1
+  ) => {
+    const dbuMonths = months.map(v => Math.round(v * DBU_RATE));
+    const y1 = dbuMonths.slice(0, 12).reduce((s, v) => s + v, 0);
+    const y2 = dbuMonths.slice(12, 24).reduce((s, v) => s + v, 0);
+    const y3 = dbuMonths.slice(24, 36).reduce((s, v) => s + v, 0);
+    const r = ws.addRow([label, ...dbuMonths, y1, y2, y3, y1 + y2 + y3]);
+    r.height = 13;
+    r.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      cell.style = {
+        font: { size: 8, name: 'Calibri', italic: true, color: rgb('4B5563') },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(bgColor) },
+        alignment: colNum === 1
+          ? { vertical: 'middle', indent }
+          : { horizontal: 'right', vertical: 'middle' },
+      };
+      if (colNum > 1 && typeof cell.value === 'number') cell.numFmt = '#,##0';
+    });
+    [13, 25, 37].forEach(col => {
+      const c = r.getCell(col + 1);
+      c.border = { ...c.border, left: { style: 'thin', color: rgb('CCCCCC') } };
+    });
+    return r;
+  };
+
   // Per-account sections
   for (const ad of accountsData) {
     const sd = ad.scenariosData.find(s => s.scenarioNum === scenarioNum);
@@ -292,6 +324,19 @@ function buildProjectionSheetMulti(
     const { activeUseCases, baselineMonths, totalMonths,
             baseYearTotals, ucYearTotals, yearTotals,
             baselineGrowthRate, assumptions } = sd;
+
+    // Helper: merge-style sub-group header across all columns
+    const addGroupHeader = (label: string, bgHex: string, fgHex: string) => {
+      const r = ws.addRow([label]);
+      r.height = 16;
+      r.getCell(1).style = {
+        font: { bold: true, size: 9, name: 'Calibri', color: rgb(fgHex) },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(bgHex) },
+        alignment: { vertical: 'middle', indent: 1 },
+      };
+      ws.mergeCells(r.number, 1, r.number, totalCols);
+      return r;
+    };
 
     // Account section header band
     ws.addRow([]);
@@ -307,23 +352,30 @@ function buildProjectionSheetMulti(
     };
     ws.mergeCells(acctRow.number, 1, acctRow.number, totalCols);
 
-    // Baseline row
+    // ── Group 1: $DBU MoM ────────────────────────────────────────────────────
+    addGroupHeader('  $DBU — Monthly Spend', 'DBEAFE', '1E3A5F');
+
+    // Baseline $DBU
     addDataRow(
       'Baseline (Existing Consumption)', baselineMonths,
       { ...dataStyle(false), font: { bold: true, size: 10, name: 'Calibri', color: rgb('374151') } }
     );
 
-    // Use case rows + SKU breakdown
+    // Collect UC data so we can reuse it for the DBU group
     const ucMonthTotals = new Array(36).fill(0);
+    type UcItem = { label: string; months: number[]; bgIdx: number; skus: Array<{ label: string; months: number[] }> };
+    const ucItems: UcItem[] = [];
+
     activeUseCases.forEach((uc, idx) => {
       const mp = uc.monthlyProjection;
       mp.forEach((v, i) => { ucMonthTotals[i] += v; });
       addDataRow(`  ↳ ${uc.name}`, mp, dataStyle(idx % 2 === 0));
 
-      // SKU breakdown rows indented under the use case
+      const skus: Array<{ label: string; months: number[] }> = [];
       if (uc.skuBreakdown?.length) {
         uc.skuBreakdown.forEach(sku => {
           const skuMonths = mp.map(v => v * (sku.percentage / 100));
+          skus.push({ label: `    └─ ${sku.sku} (${sku.percentage}%)`, months: skuMonths });
           addDataRow(
             `    └─ ${sku.sku} (${sku.percentage}%)`,
             skuMonths,
@@ -336,25 +388,40 @@ function buildProjectionSheetMulti(
           );
         });
       }
+      ucItems.push({ label: `  ↳ ${uc.name}`, months: mp, bgIdx: idx, skus });
     });
 
     if (activeUseCases.length > 0) {
       addDataRow('New Use Cases Subtotal', ucMonthTotals, { ...totalStyle(TOTAL_BG, TOTAL_FG) });
     }
-
     addDataRow(
       `Grand Total (${ad.accountName})`, totalMonths,
       { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } }
     );
 
-    // Year summary block
+    // ── Group 2: DBU MoM ─────────────────────────────────────────────────────
+    ws.addRow([]);
+    addGroupHeader('  DBUs — Monthly Consumption', 'D1FAE5', '065F46');
+
+    addDbuRow('Baseline (Existing Consumption) — DBUs', baselineMonths, 'F3F4F6', 0);
+
+    ucItems.forEach(({ label, months, bgIdx, skus }) => {
+      addDbuRow(`${label} — DBUs`, months, bgIdx % 2 === 0 ? 'F9FAFB' : 'FFFFFF', 1);
+      skus.forEach(sku => addDbuRow(`${sku.label} — DBUs`, sku.months, 'F9FAFB', 4));
+    });
+
+    if (activeUseCases.length > 0) {
+      addDbuRow('New Use Cases Subtotal — DBUs', ucMonthTotals, TOTAL_BG, 0);
+    }
+    addDbuRow(`Grand Total (${ad.accountName}) — DBUs`, totalMonths, GRAND_BG, 0);
+
+    // ── Year Summary block ────────────────────────────────────────────────────
     const csd = ad.contractStartDate || '';
     const yl1 = `Y1 (${projMonthLabel(1, csd)}–${projMonthLabel(12, csd)})`;
     const yl2 = `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})`;
     const yl3 = `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})`;
     ws.addRow([]);
 
-    // Account name header inline with year columns
     const yhRow = ws.addRow([`${ad.accountName}  —  Year Summary`, yl1, yl2, yl3, 'Grand Total']);
     yhRow.height = 20;
     [1, 2, 3, 4, 5].forEach(c => { yhRow.getCell(c).style = headerStyle(sc.bg); });
@@ -367,9 +434,9 @@ function buildProjectionSheetMulti(
     const yLabels = ['Baseline', 'New Use Cases', 'Grand Total'];
     const yData = [baseYearTotals, ucYearTotals, yearTotals];
     const yBgs = [TOTAL_BG, 'E0F2FE', GRAND_BG];
-    const DBU_RATE = 1 / 0.20; // $0.20/DBU blended list price
+
+    // $DBU group first
     yLabels.forEach((label, li) => {
-      // $DBU row
       const r = ws.addRow([`${label} — $DBU`, yData[li][0], yData[li][1], yData[li][2],
         yData[li].reduce((s, v) => s + v, 0)]);
       r.height = 18;
@@ -377,7 +444,10 @@ function buildProjectionSheetMulti(
       [2, 3, 4, 5].forEach(c => {
         if (typeof r.getCell(c).value === 'number') r.getCell(c).numFmt = USD_FMT;
       });
-      // DBU row (dollar value ÷ $0.20 per DBU)
+    });
+
+    // DBU group after
+    yLabels.forEach((label, li) => {
       const dbuVals = yData[li].map(v => Math.round(v * DBU_RATE));
       const dbuRow = ws.addRow([`${label} — DBUs`,
         dbuVals[0], dbuVals[1], dbuVals[2],
