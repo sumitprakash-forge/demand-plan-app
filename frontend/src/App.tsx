@@ -379,18 +379,30 @@ export default function App() {
 
       {/* Drive upload toast */}
       {driveToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-white border border-blue-200 rounded-xl shadow-lg px-5 py-4 flex items-start gap-3 max-w-sm">
+        <div className="fixed bottom-6 right-6 z-50 bg-white border border-blue-200 rounded-xl shadow-lg px-5 py-4 flex items-start gap-3 w-96">
           <svg className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12.01 2C6.49 2 2.02 6.48 2.02 12s4.47 10 9.99 10C17.53 22 22 17.52 22 12S17.53 2 12.01 2zm-1.01 14.5l-3.5-3.5 1.41-1.41L11 13.67l5.09-5.08 1.41 1.41L11 16.5z" />
           </svg>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-800">Uploaded to Google Drive</p>
             <p className="text-xs text-slate-500 truncate mt-0.5">{driveToast.filename}</p>
+            <div className="mt-2 flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-1">
+              <span className="text-[11px] text-slate-600 font-mono truncate flex-1">{driveToast.url}</span>
+              <button
+                onClick={() => navigator.clipboard.writeText(driveToast.url)}
+                title="Copy link"
+                className="text-slate-400 hover:text-blue-600 shrink-0"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
             <a
               href={driveToast.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:underline font-medium mt-1 inline-block"
+              className="text-xs text-blue-600 hover:underline font-medium mt-1.5 inline-block"
             >
               Open in Drive →
             </a>
