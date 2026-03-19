@@ -62,7 +62,7 @@ function loadSavedAccounts(): AccountConfig[] {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('summary');
+  const [activeTab, setActiveTab] = useState('setup');
   const [accounts, setAccounts] = useState<AccountConfig[]>(loadSavedAccounts);
   const [exporting, setExporting] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
