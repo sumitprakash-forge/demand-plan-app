@@ -370,7 +370,7 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
                 <p className="font-medium">gcloud not installed</p>
                 <p className="text-xs">Install Google Cloud SDK to enable Google Sheets access:</p>
                 <pre className="bg-amber-100 rounded px-3 py-2 text-xs font-mono overflow-x-auto">
-                  {`# macOS (Homebrew)\nbrew install --cask google-cloud-sdk\n\n# Then authenticate:\ngcloud auth login --enable-gdrive-access\ngcloud config set project gcp-sandbox-field-eng`}
+                  {`# macOS (Homebrew)\nbrew install --cask google-cloud-sdk\n\n# Then authenticate:\ngcloud auth login --enable-gdrive-access`}
                 </pre>
                 <p className="text-xs">After installing, click "Authorize with Google" again.</p>
               </div>

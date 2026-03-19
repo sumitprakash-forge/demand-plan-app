@@ -67,7 +67,6 @@ tar -xf google-cloud-cli-linux-x86_64.tar.gz
 **Authenticate with your Databricks Google account:**
 ```bash
 gcloud auth login --enable-gdrive-access
-gcloud config set project gcp-sandbox-field-eng
 ```
 
 Verify it works:
