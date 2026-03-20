@@ -4,3 +4,6 @@ dist/
 .env.local
 server/data/
 *.log
+
+# Docs, screenshots, and PDFs
+docs/

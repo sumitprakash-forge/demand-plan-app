@@ -131,8 +131,6 @@ The app accepts a Google Sheets URL for mapping Databricks workspaces to busines
 
 ### Header — Account Configuration
 
-![Header](docs/screenshots/01_header.png)
-
 The header lets you configure one or more accounts:
 
 | Field | Description |
@@ -149,8 +147,6 @@ The header lets you configure one or more accounts:
 
 ### Tab 1 — Demand Plan Summary
 
-![Demand Plan Summary](docs/screenshots/02_summary_tab.png)
-
 The main planning view showing:
 
 - **Domain Breakdown (T12M)** — Donut chart of T12M spend by business domain
@@ -166,8 +162,6 @@ When multiple accounts are loaded, each account gets its own color and grouped b
 
 ### Tab 2 — Historical Consumption (T12M)
 
-![Historical Consumption](docs/screenshots/03_historical_tab.png)
-
 Shows trailing 12-month actual Databricks consumption pulled from Logfood:
 
 - Monthly $DBU trend chart per account
@@ -182,8 +176,6 @@ Use **Refresh** to re-pull fresh data from Logfood.
 
 ### Tab 3 — Scenario Builder
 
-![Scenario Builder](docs/screenshots/04_scenario_builder.png)
-
 Build and edit use cases across 3 scenarios:
 
 - Add use cases with name, steady-state DBU, onboarding month, live month, and ramp type (linear / accelerated)
@@ -197,8 +189,6 @@ Build and edit use cases across 3 scenarios:
 **Step 1:** Click **+ Add Use Case** to create a new use case row, then click on it to expand the edit form.
 
 **Step 2:** Fill in the use case details:
-
-![Use Case Form](docs/screenshots/04a_scenario_usecase_form.png)
 
 | Field | Description | Example |
 |-------|-------------|---------|
@@ -215,17 +205,11 @@ Build and edit use cases across 3 scenarios:
 
 **Step 3:** Click **Save Scenario** — the projection table updates immediately.
 
-![Scenario Saved](docs/screenshots/04b_scenario_saved.png)
-
 **Step 4:** Switch to **Demand Plan Summary** to see the use case reflected in all three scenarios.
-
-![Summary After Use Case](docs/screenshots/04c_summary_after_usecase.png)
 
 ---
 
 ### Tab 4 — Account Overview
-
-![Account Overview](docs/screenshots/05_account_overview.png)
 
 High-level account metrics:
 
