@@ -32,6 +32,13 @@ function downloadChartAsPng(containerRef: React.RefObject<HTMLDivElement | null>
   img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
 }
 
+interface AdhocPeriodRow {
+  id: string;
+  label: string;
+  months: number[];
+  skuAmounts: { sku: string; dollarPerMonth: number }[];
+}
+
 interface ForecastRow {
   type: 'baseline' | 'use_case';
   id: string;
@@ -43,6 +50,7 @@ interface ForecastRow {
   steady_state_dbu: number | null;
   overridden_month_indices?: number[];
   uplift_only?: boolean;
+  adhoc_periods?: AdhocPeriodRow[];
 }
 
 interface ForecastData {
@@ -853,41 +861,85 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                             </tr>
 
                             {/* SKU breakdown sub-rows — always expanded by default */}
-                            {hasSkus && isExpanded && skus.map((alloc, si) => (
-                              <tr key={`${row.id}-sku-${si}`} className="border-b border-slate-100 bg-slate-50/50">
-                                <td className="pl-8 pr-3 py-1 sticky left-0 z-10 bg-slate-50/50 border-r border-slate-100">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-slate-300 text-[10px]">└─</span>
-                                    <span className="text-slate-600 text-[11px] font-medium">{alloc.sku}</span>
-                                    <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{alloc.percentage}%</span>
-                                    {alloc.dbus > 0 && !row.uplift_only && (
-                                      <span className="text-[10px] text-slate-400">{Math.round(alloc.dbus).toLocaleString()} DBUs/mo</span>
-                                    )}
-                                    {alloc.dollarDbu > 0 && (
-                                      <span className="text-[10px] text-slate-400 ml-1">{formatCurrency(alloc.dollarDbu)}/mo</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="px-2 py-1 text-slate-300 text-[11px]">—</td>
-                                {row.values.map((v, i) => {
-                                  const skuFrac = alloc.percentage / 100;
-                                  if (viewMode === 'dbu') {
-                                    const skuDbu = v * skuFrac * (alloc.dbus > 0 && alloc.dollarDbu > 0 ? alloc.dbus / alloc.dollarDbu : rate);
-                                    return (
-                                      <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
-                                        {skuDbu > 0 ? formatDbu(skuDbu) : <span className="text-slate-200">—</span>}
-                                      </td>
-                                    );
+                            {hasSkus && isExpanded && (() => {
+                              // Collect unique adhoc SKU rows: [periodLabel, sku, dollarPerMonth, monthsSet]
+                              const adhocSkuRows: { periodLabel: string; sku: string; dollarPerMonth: number; monthsSet: Set<number> }[] = [];
+                              (row.adhoc_periods || []).forEach(period => {
+                                period.skuAmounts.forEach(sa => {
+                                  if (!sa.dollarPerMonth) return;
+                                  const existing = adhocSkuRows.find(r => r.sku === sa.sku && r.periodLabel === period.label);
+                                  if (existing) {
+                                    period.months.forEach(m => existing.monthsSet.add(m));
+                                    existing.dollarPerMonth = Math.max(existing.dollarPerMonth, sa.dollarPerMonth); // use max if duplicate
+                                  } else {
+                                    adhocSkuRows.push({ periodLabel: period.label, sku: sa.sku, dollarPerMonth: sa.dollarPerMonth, monthsSet: new Set(period.months) });
                                   }
-                                  const skuVal = v * skuFrac;
-                                  return (
-                                    <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
-                                      {skuVal > 0 ? formatCurrency(skuVal) : <span className="text-slate-200">—</span>}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
+                                });
+                              });
+
+                              return (
+                                <>
+                                  {skus.map((alloc, si) => (
+                                    <tr key={`${row.id}-sku-${si}`} className="border-b border-slate-100 bg-slate-50/50">
+                                      <td className="pl-8 pr-3 py-1 sticky left-0 z-10 bg-slate-50/50 border-r border-slate-100">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-slate-300 text-[10px]">└─</span>
+                                          <span className="text-slate-600 text-[11px] font-medium">{alloc.sku}</span>
+                                          <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{alloc.percentage}%</span>
+                                          {alloc.dbus > 0 && !row.uplift_only && (
+                                            <span className="text-[10px] text-slate-400">{Math.round(alloc.dbus).toLocaleString()} DBUs/mo</span>
+                                          )}
+                                          {alloc.dollarDbu > 0 && (
+                                            <span className="text-[10px] text-slate-400 ml-1">{formatCurrency(alloc.dollarDbu)}/mo</span>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="px-2 py-1 text-slate-300 text-[11px]">—</td>
+                                      {row.values.map((v, i) => {
+                                        const skuFrac = alloc.percentage / 100;
+                                        if (viewMode === 'dbu') {
+                                          const skuDbu = v * skuFrac * (alloc.dbus > 0 && alloc.dollarDbu > 0 ? alloc.dbus / alloc.dollarDbu : rate);
+                                          return (
+                                            <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
+                                              {skuDbu > 0 ? formatDbu(skuDbu) : <span className="text-slate-200">—</span>}
+                                            </td>
+                                          );
+                                        }
+                                        const skuVal = v * skuFrac;
+                                        return (
+                                          <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-slate-400 whitespace-nowrap">
+                                            {skuVal > 0 ? formatCurrency(skuVal) : <span className="text-slate-200">—</span>}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  ))}
+                                  {/* Adhoc period SKU sub-rows — shown in indigo to distinguish from steady-state */}
+                                  {adhocSkuRows.map((asr, ai) => (
+                                    <tr key={`${row.id}-adhoc-${ai}`} className="border-b border-indigo-100 bg-indigo-50/30">
+                                      <td className="pl-8 pr-3 py-1 sticky left-0 z-10 bg-indigo-50/40 border-r border-indigo-100">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-indigo-300 text-[10px]">⚡</span>
+                                          <span className="text-indigo-700 text-[11px] font-medium">{asr.sku}</span>
+                                          <span className="text-[10px] text-indigo-500 bg-indigo-100 rounded px-1">{asr.periodLabel}</span>
+                                          <span className="text-[10px] text-indigo-400">{formatCurrency(asr.dollarPerMonth)}/mo</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-2 py-1 text-indigo-300 text-[11px]">—</td>
+                                      {row.values.map((_, i) => {
+                                        const m = i + 1;
+                                        const adhocVal = asr.monthsSet.has(m) ? asr.dollarPerMonth : 0;
+                                        return (
+                                          <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-indigo-500 whitespace-nowrap">
+                                            {adhocVal > 0 ? formatCurrency(adhocVal) : <span className="text-slate-200">—</span>}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  ))}
+                                </>
+                              );
+                            })()}
                           </React.Fragment>
                         );
                       })}
