@@ -15,10 +15,12 @@ export interface UseCase {
   scenarios: boolean[];
   monthlyProjection: number[];
   cloud?: string;
+  description?: string;
   assumptions?: string;
   workloadType?: string;
   upliftOnly?: boolean;
-  skuBreakdown?: { sku: string; percentage: number; dbus: number; dollarDbu: number }[];
+  skuBreakdown?: { sku: string; percentage: number; dbus: number; dollarDbu: number; overridePrice?: number }[];
+  adhocPeriods?: { id: string; label: string; months: number[]; skuAmounts: { sku: string; dollarPerMonth: number }[] }[];
 }
 
 export interface ScenarioExportData {
@@ -760,11 +762,11 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     { key: 'y3',       width: 18 }, { key: 'total',    width: 18 }, { key: 'notes',   width: 60 },
   ];
 
-  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with full configuration, SKU breakdown, and assumptions', 18);
+  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with full configuration, SKU breakdown, description, and assumptions', 18);
   const hrow = ws.addRow([
     'Name', 'Domain', 'Size Tier', 'DBUs/mo (steady state)', 'Workload Type', 'Cloud',
     'Onboard Month', 'Live Month', 'Ramp Duration (mo)', 'Ramp Type', 'S1', 'S2', 'S3',
-    y1Label, y2Label, y3Label, 'Grand Total', 'Assumptions',
+    y1Label, y2Label, y3Label, 'Grand Total', 'Description / Assumptions',
   ]);
   applyRowStyle(hrow, headerStyle()); hrow.height = 22;
 
@@ -792,7 +794,7 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
       uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear',
       uc.scenarios[0] ? '✓' : '', uc.scenarios[1] ? '✓' : '', uc.scenarios[2] ? '✓' : '',
       yT[0], yT[1], yT[2], yT.reduce((a, b) => a + b, 0),
-      uc.assumptions || '',
+      [uc.description, uc.assumptions].filter(Boolean).join('\n') || '',
     ]);
     applyRowStyle(ucRow, dataStyle(ucCount % 2 === 0));
     ucRow.getCell(1).font = { bold: true, size: 10, name: 'Calibri' };
@@ -808,15 +810,20 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
 
     // SKU breakdown sub-rows
     if (uc.skuBreakdown?.length) {
+      let hasCustomPrice = false;
       uc.skuBreakdown.forEach((sku) => {
-        const pricePerDbu = sku.dbus > 0 ? sku.dollarDbu / sku.dbus : 0;
+        const isCustom = sku.overridePrice !== undefined;
+        if (isCustom) hasCustomPrice = true;
+        const pricePerDbu = isCustom ? (sku.overridePrice ?? 0) : (sku.dbus > 0 ? sku.dollarDbu / sku.dbus : 0);
+        const skuLabel = `    └─ ${sku.sku}${isCustom ? ' *' : ''}`;
+        const priceLabel = isCustom ? `$/DBU: ${pricePerDbu.toFixed(2)} (custom*)` : `$/DBU: ${pricePerDbu.toFixed(2)}`;
         const skuRow = ws.addRow([
-          `    └─ ${sku.sku}`,
+          skuLabel,
           '',
           `${sku.percentage}% of UC`,
-          Math.round(sku.dbus),        // col 4: DBUs/mo (quantity first)
-          sku.dollarDbu,               // col 5: $/mo (dollars second)
-          `$/DBU: ${pricePerDbu.toFixed(2)}`,
+          Math.round(sku.dbus),
+          sku.dollarDbu,
+          priceLabel,
           '', '', '', '', '', '', '',
           yT[0] * sku.percentage / 100,
           yT[1] * sku.percentage / 100,
@@ -827,18 +834,63 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
         skuRow.height = 16;
         skuRow.eachCell({ includeEmpty: true }, (cell) => {
           cell.style = {
-            font: { size: 9, name: 'Calibri', color: rgb('6B7280'), italic: true },
-            fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('F9FAFB') },
+            font: { size: 9, name: 'Calibri', color: isCustom ? rgb('B45309') : rgb('6B7280'), italic: true },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: isCustom ? rgb('FFFBEB') : rgb('F9FAFB') },
             alignment: { vertical: 'middle' },
           };
         });
-        // col 4 = DBUs (no $ format), col 5 = $/mo (USD), cols 14-17 = year $ totals
         skuRow.getCell(4).numFmt = '#,##0';
         [5, 14, 15, 16, 17].forEach(col => {
           const c = skuRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
         });
         skuRow.getCell(1).alignment = { vertical: 'middle', indent: 2 };
         skuRow.getCell(18).alignment = { vertical: 'middle', wrapText: true };
+      });
+      // Footnote row if any custom prices used
+      if (hasCustomPrice) {
+        const noteRow = ws.addRow(['    * Custom price — SKU not yet in standard price list', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+        noteRow.height = 14;
+        noteRow.eachCell({ includeEmpty: true }, (cell) => {
+          cell.style = {
+            font: { size: 8, name: 'Calibri', color: rgb('B45309'), italic: true },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('FFFBEB') },
+          };
+        });
+        noteRow.getCell(1).alignment = { vertical: 'middle', indent: 3 };
+      }
+    }
+
+    // Adhoc period sub-rows
+    if (uc.adhocPeriods?.length) {
+      uc.adhocPeriods.forEach((period) => {
+        const periodTotal = period.skuAmounts.reduce((s, sa) => s + (sa.dollarPerMonth || 0), 0);
+        const monthsLabel = period.months.length > 0 ? `Months: ${period.months.join(', ')}` : 'No months selected';
+        const y1Adhoc = period.months.filter(m => m >= 1 && m <= 12).length * periodTotal;
+        const y2Adhoc = period.months.filter(m => m >= 13 && m <= 24).length * periodTotal;
+        const y3Adhoc = period.months.filter(m => m >= 25 && m <= 36).length * periodTotal;
+        const adhocRow = ws.addRow([
+          `    ⚡ ${period.label}`,
+          '',
+          `${period.months.length} months`,
+          '',
+          periodTotal > 0 ? `+${periodTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}/mo` : '',
+          monthsLabel,
+          '', '', '', '', '', '', '',
+          y1Adhoc, y2Adhoc, y3Adhoc, y1Adhoc + y2Adhoc + y3Adhoc,
+          '',
+        ]);
+        adhocRow.height = 16;
+        adhocRow.eachCell({ includeEmpty: true }, (cell) => {
+          cell.style = {
+            font: { size: 9, name: 'Calibri', color: rgb('4338CA'), italic: true },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('EEF2FF') },
+            alignment: { vertical: 'middle' },
+          };
+        });
+        [14, 15, 16, 17].forEach(col => {
+          const c = adhocRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
+        });
+        adhocRow.getCell(1).alignment = { vertical: 'middle', indent: 2 };
       });
     }
 

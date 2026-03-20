@@ -380,12 +380,13 @@ async def get_sku_prices(
 # ---------------------------------------------------------------------------
 
 def _calc_use_case_monthly(uc: dict, total_months: int = 36) -> list[float]:
-    """Calculate monthly projection for a use case with ramp up to total_months."""
+    """Calculate monthly projection for a use case with ramp + adhoc periods."""
     result = [0.0] * total_months
     ss = uc.get("steadyStateDbu") or uc.get("steady_state_dbu") or 0
     om = uc.get("onboardingMonth") or uc.get("onboarding_month") or 1
     lm = uc.get("liveMonth") or uc.get("live_month") or 6
     ramp = uc.get("rampType") or uc.get("ramp_type") or "linear"
+    adhoc_periods = uc.get("adhocPeriods") or uc.get("adhoc_periods") or []
     if ss <= 0 or lm <= om:
         return result
     ramp_months = lm - om
@@ -398,6 +399,12 @@ def _calc_use_case_monthly(uc: dict, total_months: int = 36) -> list[float]:
         else:
             progress = (m - om + 1) / (ramp_months + 1)
             result[i] = ss * progress if ramp == "linear" else ss * (progress ** 2.5)
+        # Add adhoc usage for selected months (development phase bursts)
+        for period in adhoc_periods:
+            months_list = period.get("months") or []
+            if m in months_list:
+                sku_amounts = period.get("skuAmounts") or period.get("sku_amounts") or []
+                result[i] += sum(sa.get("dollarPerMonth") or sa.get("dollar_per_month") or 0 for sa in sku_amounts)
     return result
 
 
@@ -666,6 +673,9 @@ async def get_consumption_forecast(
             "onboarding_month": uc.get("onboardingMonth") or uc.get("onboarding_month"),
             "live_month": uc.get("liveMonth") or uc.get("live_month"),
             "steady_state_dbu": uc.get("steadyStateDbu") or uc.get("steady_state_dbu"),
+            "uplift_only": uc.get("upliftOnly") or uc.get("uplift_only") or False,
+            "description": uc.get("description") or "",
+            "adhoc_periods": uc.get("adhocPeriods") or uc.get("adhoc_periods") or [],
         })
 
     # Total row

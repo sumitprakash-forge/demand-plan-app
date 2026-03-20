@@ -30,7 +30,7 @@ const DEFAULT_ACCOUNTS: AccountConfig[] = [
   { name: 'Kroger', sfdc_id: 'Kroger', contractStartDate: '', contractMonths: 36 },
 ];
 
-// Calculate use case monthly projection (same logic as ScenarioTab)
+// Calculate use case monthly projection (same logic as ScenarioTab, includes adhoc periods)
 function calcUseCaseMonthly(uc: any): number[] {
   const months = new Array(36).fill(0);
   const ss = uc.steadyStateDbu || 0;
@@ -45,6 +45,13 @@ function calcUseCaseMonthly(uc: any): number[] {
     else {
       const progress = (m - om + 1) / (rampMonths + 1);
       months[i] = (uc.rampType || 'linear') === 'linear' ? ss * progress : ss * Math.pow(progress, 2.5);
+    }
+    // Add adhoc period amounts
+    const adhocPeriods = uc.adhocPeriods || [];
+    for (const period of adhocPeriods) {
+      if ((period.months || []).includes(m)) {
+        months[i] += (period.skuAmounts || []).reduce((s: number, sa: any) => s + (sa.dollarPerMonth || 0), 0);
+      }
     }
   }
   return months;
@@ -250,6 +257,24 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
         rampType: uc.rampType || uc.ramp_type || 'linear',
         scenarios: uc.scenarios || [true, false, false],
         upliftOnly: uc.upliftOnly ?? uc.uplift_only ?? false,
+        description: uc.description || '',
+        assumptions: uc.assumptions || '',
+        adhocPeriods: (uc.adhocPeriods || uc.adhoc_periods || []).map((p: any) => ({
+          id: p.id || '',
+          label: p.label || '',
+          months: p.months || [],
+          skuAmounts: (p.skuAmounts || p.sku_amounts || []).map((sa: any) => ({
+            sku: sa.sku || '',
+            dollarPerMonth: sa.dollarPerMonth || sa.dollar_per_month || 0,
+          })),
+        })),
+        skuBreakdown: (uc.skuBreakdown || uc.sku_breakdown || []).map((s: any) => ({
+          sku: s.sku || '',
+          percentage: s.percentage || 0,
+          dbus: s.dbus || 0,
+          dollarDbu: s.dollarDbu || s.dollar_dbu || 0,
+          overridePrice: s.overridePrice ?? s.override_price ?? undefined,
+        })),
         monthlyProjection: calcUseCaseMonthly(uc),
       }));
 

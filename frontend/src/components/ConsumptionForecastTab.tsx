@@ -42,6 +42,7 @@ interface ForecastRow {
   live_month: number | null;
   steady_state_dbu: number | null;
   overridden_month_indices?: number[];
+  uplift_only?: boolean;
 }
 
 interface ForecastData {
@@ -70,6 +71,8 @@ interface UseCase {
   rampType: string;
   scenarios: [boolean, boolean, boolean];
   skuBreakdown?: SKUAllocation[];
+  upliftOnly?: boolean;
+  uplift_only?: boolean;
 }
 
 interface ScenarioData {
@@ -157,8 +160,10 @@ function CellValue({ value, highlight }: { value: number; highlight?: 'onboardin
 
 // ─── DBU conversion helpers ───────────────────────────────────────────────────
 
-/** Returns DBUs/$ conversion rate for a use case (from SKU breakdown if available). */
+/** Returns DBUs/$ conversion rate for a use case (from SKU breakdown if available).
+ *  Returns 0 for uplift-only use cases — they have no DBU volume impact. */
 function dbuRate(ucData: UseCase | null | undefined): number {
+  if (ucData?.upliftOnly || ucData?.uplift_only) return 0;
   if (ucData?.skuBreakdown?.length) {
     const totalDollar = ucData.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
     const totalDbu    = ucData.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
@@ -201,8 +206,10 @@ function ForecastDomainCharts({
     fd.rows.forEach(row => {
       const label = row.type === 'baseline' ? 'Baseline' : (row.label || 'Other');
       if (!ucMonthly[label]) ucMonthly[label] = new Array(months).fill(0);
+      // uplift_only rows: dollar impact is real but DBU count is 0
+      const isUpliftOnly = row.uplift_only === true;
       row.values.slice(0, months).forEach((v, i) => {
-        ucMonthly[label][i] += metricMode === 'dbu' ? v * DBU_RATE : v;
+        ucMonthly[label][i] += (metricMode === 'dbu' && !isUpliftOnly) ? v * DBU_RATE : (metricMode === 'dbu' ? 0 : v);
       });
     });
   });
@@ -398,16 +405,24 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
 
   useEffect(() => { loadData(activeScenario); }, [activeScenario, months]);
 
-  // Save scenario and reload forecast for one account (account = display name, used as state key)
+  // Save scenario and reload forecast + merged use cases for one account
   const saveAndReload = async (account: string, updated: ScenarioData) => {
     setSaving(true);
     try {
       const acctConfig = accounts.find(a => a.name === account);
       const sfdc = acctConfig?.sfdc_id || account;
       const res = await saveScenario({ ...updated, scenario_id: activeScenario, account: sfdc });
-      setScenarioData(prev => ({ ...prev, [account]: { ...updated, version: res.version } }));
-      const forecast = await fetchConsumptionForecast(sfdc, activeScenario, months, acctConfig?.contractStartDate || '');
+      const savedVersion = { ...updated, version: res.version };
+      setScenarioData(prev => ({ ...prev, [account]: savedVersion }));
+      // Reload forecast AND all 3 scenario files so mergedUseCases reflects deletions/changes
+      const [forecast, sc1, sc2, sc3] = await Promise.all([
+        fetchConsumptionForecast(sfdc, activeScenario, months, acctConfig?.contractStartDate || ''),
+        fetchScenario(sfdc, 1),
+        fetchScenario(sfdc, 2),
+        fetchScenario(sfdc, 3),
+      ]);
       setForecastData(prev => ({ ...prev, [account]: forecast }));
+      setMergedUseCases(prev => ({ ...prev, [account]: mergeUseCases([sc1, sc2, sc3]) }));
     } catch (e) {
       if (e instanceof ConflictError) setConflictAccount(account);
     }
@@ -490,6 +505,14 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
         </div>
         <div className="flex items-center gap-3">
           {saving && <span className="text-xs text-slate-500 animate-pulse">Saving...</span>}
+          <button
+            onClick={() => loadData(activeScenario)}
+            disabled={loading}
+            className="text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded px-2 py-1 hover:bg-slate-50 disabled:opacity-40"
+            title="Refresh data from scenario builder"
+          >
+            ↺ Refresh
+          </button>
 
           {/* DBU / $DBU toggle */}
           <div className="flex items-center rounded-lg border border-slate-200 overflow-hidden shadow-sm">
@@ -599,7 +622,9 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         <td className="px-3 py-2 text-slate-500">{uc.domain || '—'}</td>
                         <td className="px-3 py-2 text-right font-mono text-slate-700 font-semibold">
                           {viewMode === 'dbu'
-                            ? `${formatDbu(dbuRate(uc) * uc.steadyStateDbu)} DBUs`
+                            ? (uc.upliftOnly || uc.uplift_only
+                                ? <span className="text-amber-600 text-xs font-semibold">$ uplift only</span>
+                                : `${formatDbu(dbuRate(uc) * uc.steadyStateDbu)} DBUs`)
                             : formatCurrency(uc.steadyStateDbu)}
                         </td>
                         <td className="px-3 py-2 text-center">
@@ -652,7 +677,9 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                           <td className="px-3 py-1 text-[11px] text-slate-400">{uc.domain || '—'}</td>
                           <td className="px-3 py-1 text-right font-mono text-[11px] text-slate-500">
                             {viewMode === 'dbu'
-                              ? (alloc.dbus > 0 ? `${Math.round(alloc.dbus).toLocaleString()} DBUs` : `${formatDbu(dbuRate(uc) * uc.steadyStateDbu * alloc.percentage / 100)} DBUs`)
+                              ? (uc.upliftOnly || uc.uplift_only
+                                  ? <span className="text-amber-600 text-[10px]">0 DBUs</span>
+                                  : (alloc.dbus > 0 ? `${Math.round(alloc.dbus).toLocaleString()} DBUs` : `${formatDbu(dbuRate(uc) * uc.steadyStateDbu * alloc.percentage / 100)} DBUs`))
                               : formatCurrency(uc.steadyStateDbu * alloc.percentage / 100)}
                           </td>
                           <td colSpan={5} />
@@ -759,7 +786,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         const skus = ucData?.skuBreakdown?.filter(a => a.percentage > 0) || [];
                         const hasSkus = skus.length > 0;
                         const isExpanded = !collapsedUCIds.has(row.id);
-                        const rate = dbuRate(ucData);
+                        const rate = (row.uplift_only || ucData?.upliftOnly || ucData?.uplift_only) ? 0 : dbuRate(ucData);
 
                         const overriddenSet = isBaseline
                           ? new Set(row.overridden_month_indices || [])
@@ -778,6 +805,9 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                                 <div className="flex items-center gap-1.5">
                                   {!isBaseline && <span className={`inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.bg}`} />}
                                   <span className="flex-1">{row.label}</span>
+                                  {row.uplift_only && (
+                                    <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 flex-shrink-0">$ uplift</span>
+                                  )}
                                   {hasSkus && (
                                     <button
                                       onClick={() => toggleUCExpand(row.id)}
@@ -830,7 +860,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                                     <span className="text-slate-300 text-[10px]">└─</span>
                                     <span className="text-slate-600 text-[11px] font-medium">{alloc.sku}</span>
                                     <span className="text-[10px] text-slate-400 bg-slate-100 rounded px-1">{alloc.percentage}%</span>
-                                    {alloc.dbus > 0 && (
+                                    {alloc.dbus > 0 && !row.uplift_only && (
                                       <span className="text-[10px] text-slate-400">{Math.round(alloc.dbus).toLocaleString()} DBUs/mo</span>
                                     )}
                                     {alloc.dollarDbu > 0 && (
