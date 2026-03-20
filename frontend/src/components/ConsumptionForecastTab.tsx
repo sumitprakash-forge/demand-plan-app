@@ -728,7 +728,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
 
                         // Find matching UC for SKU breakdown
                         const ucData = !isBaseline
-                          ? (mergedUseCases[acc.name] || []).find(u => u.id === row.id)
+                          ? (scenarioData[acc.name]?.new_use_cases || mergedUseCases[acc.name] || []).find(u => u.id === row.id)
                           : null;
                         const skus = ucData?.skuBreakdown?.filter(a => a.percentage > 0) || [];
                         const hasSkus = skus.length > 0;
