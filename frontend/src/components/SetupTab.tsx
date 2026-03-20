@@ -49,6 +49,7 @@ interface SetupStatus {
   google: boolean;
   warehouse_id: string;
   host: string;
+  username: string;
 }
 
 interface Warehouse {
@@ -110,44 +111,27 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
 // ─── Step 1: Databricks ───────────────────────────────────────────────────────
 
 function DatabricksStep({ status, onDone }: { status: SetupStatus | null; onDone: () => void }) {
-  const done = status?.databricks ?? false;
-  const [host, setHost] = useState(status?.host || 'https://adb-2548836972759138.18.azuredatabricks.net');
-  const [token, setToken] = useState('');
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState(status?.warehouse_id || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [step, setStep] = useState<'creds' | 'warehouse'>('creds');
 
   useEffect(() => {
-    if (status?.host) setHost(status.host);
-    else setHost('https://adb-2548836972759138.18.azuredatabricks.net');
     if (status?.warehouse_id) setSelectedWarehouse(status.warehouse_id);
-    if (status?.databricks) setStep('warehouse');
-  }, [status]);
+  }, [status?.warehouse_id]);
 
-  const handleConnect = async () => {
-    if (!host.trim() || !token.trim()) { setError('Both fields are required.'); return; }
-    setLoading(true); setError('');
+  const loadWarehouses = async () => {
     try {
-      await apiFetch('/api/setup/databricks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: host.trim(), token: token.trim() }),
-      });
       const wh = await apiFetch('/api/setup/warehouses');
       setWarehouses(wh.warehouses || []);
-      // Auto-select first running warehouse
-      const running = (wh.warehouses || []).find((w: Warehouse) => w.state === 'RUNNING');
-      if (running) setSelectedWarehouse(running.id);
-      setStep('warehouse');
-      onDone();
-    } catch (e: any) {
-      setError(e.message || 'Connection failed');
-    } finally {
-      setLoading(false);
-    }
+      if (!selectedWarehouse) {
+        const running = (wh.warehouses || []).find((w: Warehouse) => w.state === 'RUNNING');
+        if (running) setSelectedWarehouse(running.id);
+      }
+    } catch {}
   };
+
+  useEffect(() => { loadWarehouses(); }, []);
 
   const handleSaveWarehouse = async () => {
     if (!selectedWarehouse) { setError('Select a warehouse.'); return; }
@@ -166,107 +150,63 @@ function DatabricksStep({ status, onDone }: { status: SetupStatus | null; onDone
     }
   };
 
-  const loadWarehouses = async () => {
-    try {
-      const wh = await apiFetch('/api/setup/warehouses');
-      setWarehouses(wh.warehouses || []);
-    } catch {}
-  };
-
-  useEffect(() => {
-    if (done && step === 'warehouse' && warehouses.length === 0) loadWarehouses();
-  }, [done, step]);
+  const warehouseSaved = !!status?.warehouse_id;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-        <StepBadge n={1} done={done && !!status?.warehouse_id} />
+        <StepBadge n={1} done={warehouseSaved} />
         <div>
-          <h3 className="font-semibold text-slate-800">Databricks Workspace</h3>
-          <p className="text-xs text-slate-500">Connect to the Logfood workspace to query account data</p>
+          <h3 className="font-semibold text-slate-800">Logfood Workspace</h3>
+          <p className="text-xs text-slate-500">Connected via your login session</p>
         </div>
-        {done && status?.warehouse_id && (
-          <span className="ml-auto text-xs text-emerald-600 font-medium flex items-center gap-1">
-            <CheckIcon /> Connected
-          </span>
-        )}
+        <span className="ml-auto text-xs text-emerald-600 font-medium flex items-center gap-1">
+          <CheckIcon /> Authenticated
+        </span>
       </div>
 
       <div className="px-5 py-4 space-y-4">
-        {step === 'creds' || !done ? (
-          <>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Workspace URL</label>
-              <input
-                type="url"
-                value={host}
-                onChange={e => setHost(e.target.value)}
-                placeholder="https://adb-1234567890.azuredatabricks.net"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Personal Access Token</label>
-              <input
-                type="password"
-                value={token}
-                onChange={e => setToken(e.target.value)}
-                placeholder="dapi••••••••••••••••••••••••••••••••"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Generate in your workspace: User Settings → Developer → Access Tokens
-              </p>
-            </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <button
-              onClick={handleConnect}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? <SpinIcon /> : null}
-              {loading ? 'Connecting…' : 'Connect & Validate'}
-            </button>
-          </>
-        ) : null}
-
-        {(done || step === 'warehouse') && (
+        {/* Session info — read only */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-medium text-slate-600">SQL Warehouse</label>
-              {done && (
-                <button onClick={() => setStep('creds')} className="text-[11px] text-blue-500 hover:underline">
-                  Change credentials
-                </button>
-              )}
-            </div>
-            {warehouses.length === 0 ? (
-              <p className="text-xs text-slate-400 italic">Loading warehouses…</p>
-            ) : (
-              <select
-                value={selectedWarehouse}
-                onChange={e => setSelectedWarehouse(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="">— select a warehouse —</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({w.state})
-                  </option>
-                ))}
-              </select>
-            )}
-            {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
-            <button
-              onClick={handleSaveWarehouse}
-              disabled={loading || !selectedWarehouse}
-              className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? <SpinIcon /> : null}
-              Save Warehouse
-            </button>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Signed in as</p>
+            <p className="text-sm font-medium text-slate-700">{status?.username || '—'}</p>
           </div>
-        )}
+          <div>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1">Workspace</p>
+            <p className="text-xs text-slate-500 font-mono truncate" title={status?.host}>{status?.host || '—'}</p>
+          </div>
+        </div>
+
+        {/* Warehouse selection */}
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-slate-600">SQL Warehouse</label>
+          {warehouses.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">Loading warehouses…</p>
+          ) : (
+            <select
+              value={selectedWarehouse}
+              onChange={e => setSelectedWarehouse(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="">— select a warehouse —</option>
+              {warehouses.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name} ({w.state})
+                </option>
+              ))}
+            </select>
+          )}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button
+            onClick={handleSaveWarehouse}
+            disabled={loading || !selectedWarehouse}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? <SpinIcon /> : null}
+            Save Warehouse
+          </button>
+        </div>
       </div>
     </div>
   );
