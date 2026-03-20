@@ -196,7 +196,7 @@ async def fetch_domain_mapping(sheet_url: str) -> list[dict]:
 
         entry = {
             "workspace": ws,
-            "domain": domain or "Unmapped",
+            "domain": domain or "Untagged",
         }
         if "account_name" in col_map and col_map["account_name"] < len(row):
             entry["account_name"] = row[col_map["account_name"]].strip()

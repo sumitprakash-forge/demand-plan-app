@@ -435,7 +435,7 @@ async def get_summary(
     monthly_totals: dict[str, float] = defaultdict(float)
     for row in consumption:
         ws = row.get("workspace_name", "")
-        domain = ws_to_domain.get(ws.lower(), "Unmapped")
+        domain = ws_to_domain.get(ws.lower(), "Untagged")
         dbu = row.get("dollar_dbu_list", 0) or 0
         domain_totals[domain] += float(dbu)
         month = row.get("month", "")
@@ -777,7 +777,7 @@ async def get_forecast(
         if ws not in ws_data:
             ws_data[ws] = {
                 "workspace": ws,
-                "domain": ws_to_domain.get(ws.lower(), "Unmapped"),
+                "domain": ws_to_domain.get(ws.lower(), "Untagged"),
                 "cloud": "AWS",
                 "monthly_dbu": 0.0,
                 "total_dbu": 0.0,
@@ -854,7 +854,7 @@ async def get_account_overview(
         month = row.get("month", "")
         ws = row.get("workspace_name", "")
         sku = row.get("sku", "Unknown") or "Unknown"
-        domain = ws_to_domain.get(ws.lower(), "Unmapped")
+        domain = ws_to_domain.get(ws.lower(), "Untagged")
         dbu = float(row.get("dollar_dbu_list", 0) or 0)
         monthly_totals[month] += dbu
         domain_totals[domain] += dbu

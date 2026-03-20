@@ -525,7 +525,7 @@ data-eng-prod,Data Engineering`}
           {uploading ? 'Uploading…' : mapping.length > 0 ? 'Re-upload CSV' : 'Upload CSV'}
         </button>
         {mapping.length === 0 && !uploading && (
-          <span className="text-[10px] text-slate-400 italic">No mapping uploaded yet — workspaces will show as "Unmapped"</span>
+          <span className="text-[10px] text-slate-400 italic">No mapping uploaded yet — workspaces will show as "Untagged"</span>
         )}
       </div>
 
