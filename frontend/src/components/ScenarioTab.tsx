@@ -367,10 +367,32 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     setSaving(true);
     setSaved(false);
     try {
-      // Each scenario maintains its own independent use case list
       const overridesArr = Object.entries(baselineOverrides).map(([k, v]) => ({ month_index: Number(k), value: v }));
+      // Save current scenario
       const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
       setVersion(res.version);
+
+      // Propagate updated UC list to the other 2 scenario files so all scenarios stay in sync.
+      // Use cases are shared across S1/S2/S3 — only the scenarios[] flag differs per UC.
+      // Each file keeps its own baseline_growth_rate / assumptions_text / baseline_overrides.
+      const otherScenarios = ([1, 2, 3] as const).filter(s => s !== scenario);
+      await Promise.all(otherScenarios.map(async (s) => {
+        try {
+          const other = await fetchScenario(account, s);
+          await saveScenario({
+            scenario_id: s, account,
+            baseline_growth_rate: other.baseline_growth_rate ?? 0.02,
+            assumptions_text: other.assumptions_text ?? '',
+            new_use_cases: newUseCases,
+            baseline_overrides: other.baseline_overrides ?? [],
+            version: other.version ?? 0,
+          });
+        } catch (e) {
+          // Don't block the primary save if a sibling scenario fails
+          console.warn(`Could not sync UCs to scenario ${s}:`, e);
+        }
+      }));
+
       setSaved(true);
       setIsDirty(false);
       setTimeout(() => setSaved(false), 3000);
@@ -404,11 +426,19 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     const updated = newUseCases.filter(uc => uc.id !== id);
     setNewUseCases(updated);
     setIsDirty(false);
-    // Auto-save immediately so dependent tabs (Consumption Forecast) see the removal right away
+    // Auto-save immediately so dependent tabs see the removal — sync all 3 scenario files
     try {
       const overridesArr = Object.entries(baselineOverrides).map(([k, v]) => ({ month_index: Number(k), value: v }));
       const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: updated, baseline_overrides: overridesArr, version });
       setVersion(res.version);
+      // Propagate to sibling scenarios
+      const others = ([1, 2, 3] as const).filter(s => s !== scenario);
+      await Promise.all(others.map(async (s) => {
+        try {
+          const other = await fetchScenario(account, s);
+          await saveScenario({ scenario_id: s, account, baseline_growth_rate: other.baseline_growth_rate ?? 0.02, assumptions_text: other.assumptions_text ?? '', new_use_cases: updated, baseline_overrides: other.baseline_overrides ?? [], version: other.version ?? 0 });
+        } catch (e) { console.warn(`Could not sync UC removal to scenario ${s}:`, e); }
+      }));
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
