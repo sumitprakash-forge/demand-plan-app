@@ -1,0 +1,15 @@
+command:
+  - "python"
+  - "-m"
+  - "uvicorn"
+  - "main:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+  - "--app-dir"
+  - "server"
+
+env:
+  - name: JWT_SECRET
+    value: "demand-plan-prod-secret-ncc-2025"

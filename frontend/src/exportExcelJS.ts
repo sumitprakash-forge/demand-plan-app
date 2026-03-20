@@ -17,6 +17,7 @@ export interface UseCase {
   cloud?: string;
   assumptions?: string;
   workloadType?: string;
+  upliftOnly?: boolean;
   skuBreakdown?: { sku: string; percentage: number; dbus: number; dollarDbu: number }[];
 }
 
@@ -380,7 +381,8 @@ function buildProjectionSheetMulti(
     activeUseCases.forEach((uc, idx) => {
       const mp = uc.monthlyProjection;
       mp.forEach((v, i) => { ucMonthTotals[i] += v; });
-      addDataRow(`  ↳ ${uc.name}`, mp, dataStyle(idx % 2 === 0));
+      const ucLabel = uc.upliftOnly ? `  ↳ ${uc.name}  [$ uplift only]` : `  ↳ ${uc.name}`;
+      addDataRow(ucLabel, mp, dataStyle(idx % 2 === 0));
 
       const skus: Array<{ label: string; months: number[] }> = [];
       if (uc.skuBreakdown?.length) {
@@ -399,7 +401,8 @@ function buildProjectionSheetMulti(
           );
         });
       }
-      ucItems.push({ label: `  ↳ ${uc.name}`, months: mp, bgIdx: idx, skus });
+      // For uplift-only UCs, pass zeroed months to DBU group so volume isn't inflated
+      ucItems.push({ label: ucLabel, months: uc.upliftOnly ? new Array(mp.length).fill(0) : mp, bgIdx: idx, skus: uc.upliftOnly ? [] : skus });
     });
 
     if (activeUseCases.length > 0) {
@@ -771,11 +774,13 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     uc.monthlyProjection.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
     const rampDuration = Math.max(0, uc.liveMonth - uc.onboardingMonth);
     // Derive approx DBUs/mo from steadyStateDbu using a blended ~$0.20/DBU list price
-    const estDbus = uc.skuBreakdown?.length
-      ? uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)
-      : Math.round(uc.steadyStateDbu / 0.20);
+    const estDbus = uc.upliftOnly ? 0
+      : uc.skuBreakdown?.length
+        ? uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)
+        : Math.round(uc.steadyStateDbu / 0.20);
+    const ucDisplayName = uc.upliftOnly ? `${uc.name}  [$ uplift only]` : uc.name;
     const ucRow = ws.addRow([
-      uc.name,
+      ucDisplayName,
       uc.domain,
       sizeTierLabel(uc.steadyStateDbu),
       estDbus,                   // col 4: DBUs/mo
@@ -995,7 +1000,8 @@ function buildConsumptionForecastSheet(
       const tier = sizeTierLabel(uc.steadyStateDbu);
       const onbLabel = projMonthLabel(uc.onboardingMonth, csd);
       const liveLabel = projMonthLabel(uc.liveMonth, csd);
-      const ucLabel = `  ↳ ${uc.name}  [${tier}  ·  ${uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'}  ·  ${onbLabel}→${liveLabel}]`;
+      const upliftTag = uc.upliftOnly ? '  ·  $ UPLIFT ONLY — no new DBUs' : '';
+      const ucLabel = `  ↳ ${uc.name}  [${tier}  ·  ${uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'}  ·  ${onbLabel}→${liveLabel}${upliftTag}]`;
 
       addForecastRow(ucLabel, mp, dataStyle(idx % 2 === 0), 2);
 

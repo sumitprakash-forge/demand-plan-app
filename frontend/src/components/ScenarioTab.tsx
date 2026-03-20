@@ -63,7 +63,7 @@ interface NewUseCase {
   id: string;
   domain: string;
   name: string;
-  steadyStateDbu: number;  // $/month at full run-rate
+  steadyStateDbu: number;  // $/month at full run-rate (or $/month uplift when upliftOnly=true)
   onboardingMonth: number; // 1-36
   liveMonth: number;       // 1-36, must be >= onboarding
   rampType: RampType;
@@ -71,6 +71,7 @@ interface NewUseCase {
   cloud: string;           // which cloud this use case runs on
   assumptions: string;     // free text per use case
   skuBreakdown: SKUAllocation[];  // per-SKU split
+  upliftOnly: boolean;     // true = dollar uplift only (e.g. Serverless migration), no new DBUs
 }
 
 interface DomainBaseline {
@@ -229,6 +230,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     scenarios: uc.scenarios || [true, false, false],
     cloud: uc.cloud || 'azure',
     assumptions: uc.assumptions || '',
+    upliftOnly: uc.upliftOnly ?? uc.uplift_only ?? false,
     skuBreakdown: (uc.skuBreakdown || uc.sku_breakdown || []).map((s: any) => ({
       sku: s.sku || '',
       percentage: s.percentage || 0,
@@ -359,6 +361,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
       scenarios: [scenario === 1, scenario === 2, scenario === 3],
       cloud: availableClouds[0] || 'azure',
       assumptions: '',
+      upliftOnly: false,
       skuBreakdown: [],
     }]);
   };
@@ -816,9 +819,17 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${uc.rampType === 'hockey_stick' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
                             {uc.rampType === 'hockey_stick' ? 'Hockey Stick' : 'Linear'} ramp
                           </span>
+                          {uc.upliftOnly && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">
+                              $ uplift only
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-gray-400 mt-0.5">
-                          {formatCurrency(uc.steadyStateDbu)}/mo &nbsp;·&nbsp;
+                          <span className={uc.upliftOnly ? 'text-amber-600 font-medium' : ''}>
+                            {formatCurrency(uc.steadyStateDbu)}/mo{uc.upliftOnly ? ' $ uplift' : ''}
+                          </span>
+                          &nbsp;·&nbsp;
                           <span className="text-amber-600 font-medium">Onboard: {getMonthLabel(uc.onboardingMonth, contractStartDate)}</span>
                           &nbsp;→&nbsp;
                           <span className="text-green-600 font-medium">Live: {getMonthLabel(uc.liveMonth, contractStartDate)}</span>
@@ -868,7 +879,24 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                           </select>
                         </div>
                         <div className="col-span-2 md:col-span-4">
-                          <label className="block text-xs font-medium text-gray-600 mb-1.5">Steady-State Size</label>
+                          {/* Uplift-only toggle */}
+                          <div className="flex items-center gap-3 mb-3 p-2.5 rounded-lg border border-amber-200 bg-amber-50">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={uc.upliftOnly}
+                                onChange={(e) => updateUC(uc.id, { upliftOnly: e.target.checked })}
+                                className="w-4 h-4 rounded accent-amber-500"
+                              />
+                              <span className="text-xs font-semibold text-amber-800">Dollar uplift only (no new DBUs)</span>
+                            </label>
+                            <span className="text-[10px] text-amber-700 leading-tight">
+                              Use for Serverless migrations, price tier changes — impacts $DBU spend but not DBU volume
+                            </span>
+                          </div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                            {uc.upliftOnly ? 'Monthly $ Uplift' : 'Steady-State Size'}
+                          </label>
                           <div className="flex flex-wrap gap-1.5">
                             {TSHIRT_SIZES.map((size) => {
                               const isSelected = getTshirtKey(uc.steadyStateDbu) === size.key;

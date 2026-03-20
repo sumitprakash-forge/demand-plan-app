@@ -249,6 +249,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
         liveMonth: uc.liveMonth || uc.live_month || 6,
         rampType: uc.rampType || uc.ramp_type || 'linear',
         scenarios: uc.scenarios || [true, false, false],
+        upliftOnly: uc.upliftOnly ?? uc.uplift_only ?? false,
         monthlyProjection: calcUseCaseMonthly(uc),
       }));
 
