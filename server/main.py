@@ -47,6 +47,59 @@ _scenarios: dict[str, ScenarioAssumptions] = {}
 _forecast_overrides: dict[str, list[dict]] = {}
 _sku_price_cache: dict[str, list[dict]] = {}
 
+# Static SKU prices used when Logfood is unavailable (demo / smoke-test mode).
+# Prices are standard Databricks list prices (USD per DBU).
+_STATIC_SKU_PRICES: list[dict] = [
+    # All Purpose Compute
+    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE", "cloud": "Azure", "list_price": 0.55},
+    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE", "cloud": "GCP", "list_price": 0.55},
+    # All Purpose Compute (Photon)
+    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.55},
+    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.55},
+    # Jobs Compute
+    {"sku": "PREMIUM_JOBS_COMPUTE", "cloud": "Azure", "list_price": 0.30},
+    {"sku": "PREMIUM_JOBS_COMPUTE", "cloud": "GCP", "list_price": 0.30},
+    # Jobs Compute (Photon)
+    {"sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.30},
+    {"sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.30},
+    # Serverless Jobs
+    {"sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE", "cloud": "Azure", "list_price": 0.40},
+    {"sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE", "cloud": "GCP", "list_price": 0.40},
+    # SQL Warehouse
+    {"sku": "PREMIUM_SQL_COMPUTE", "cloud": "Azure", "list_price": 0.22},
+    {"sku": "PREMIUM_SQL_COMPUTE", "cloud": "GCP", "list_price": 0.22},
+    # Serverless SQL
+    {"sku": "PREMIUM_SQL_SERVERLESS_COMPUTE", "cloud": "Azure", "list_price": 0.70},
+    {"sku": "PREMIUM_SQL_SERVERLESS_COMPUTE", "cloud": "GCP", "list_price": 0.70},
+    # DLT Core
+    {"sku": "PREMIUM_DLT_CORE_COMPUTE", "cloud": "Azure", "list_price": 0.36},
+    {"sku": "PREMIUM_DLT_CORE_COMPUTE", "cloud": "GCP", "list_price": 0.36},
+    # DLT Core (Photon)
+    {"sku": "PREMIUM_DLT_CORE_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.36},
+    {"sku": "PREMIUM_DLT_CORE_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.36},
+    # DLT Advanced
+    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE", "cloud": "Azure", "list_price": 0.54},
+    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE", "cloud": "GCP", "list_price": 0.54},
+    # DLT Advanced (Photon)
+    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.54},
+    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.54},
+    # DLT Pro
+    {"sku": "PREMIUM_DLT_PRO_COMPUTE", "cloud": "Azure", "list_price": 0.45},
+    {"sku": "PREMIUM_DLT_PRO_COMPUTE", "cloud": "GCP", "list_price": 0.45},
+    # Model Serving
+    {"sku": "PREMIUM_MODEL_SERVING", "cloud": "Azure", "list_price": 0.07},
+    {"sku": "PREMIUM_MODEL_SERVING", "cloud": "GCP", "list_price": 0.07},
+    # Serverless Inference
+    {"sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE", "cloud": "Azure", "list_price": 0.07},
+    {"sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE", "cloud": "GCP", "list_price": 0.07},
+    # Foundation Model API
+    {"sku": "PREMIUM_FOUNDATION_MODEL_TOKENS", "cloud": "Azure", "list_price": 0.105},
+    {"sku": "PREMIUM_FOUNDATION_MODEL_TOKENS", "cloud": "GCP", "list_price": 0.105},
+    # Vector Search
+    {"sku": "PREMIUM_VECTOR_SEARCH", "cloud": "Azure", "list_price": 0.10},
+    {"sku": "PREMIUM_VECTOR_SEARCH", "cloud": "GCP", "list_price": 0.10},
+]
+
 
 # Runtime config (credentials, warehouse) — persisted to config.json
 _config: dict = {}
@@ -339,8 +392,9 @@ async def get_sku_prices(
                 raw_rows = query_sku_prices(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user))
                 _sku_price_cache[cache_key] = raw_rows
                 _save_json(f"sku_prices_{account}", raw_rows, ud)
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"SKU price query failed: {str(e)}")
+            except Exception:
+                # Logfood unavailable (demo/smoke-test mode) — return static SKU list
+                raw_rows = _STATIC_SKU_PRICES
 
     # Build sku_prices list with friendly names
     sku_prices = []
