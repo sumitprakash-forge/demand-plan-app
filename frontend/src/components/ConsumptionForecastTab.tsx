@@ -860,8 +860,8 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                               })}
                             </tr>
 
-                            {/* SKU breakdown sub-rows — always expanded by default */}
-                            {hasSkus && isExpanded && (() => {
+                            {/* SKU breakdown sub-rows + adhoc rows — show when either exists */}
+                            {(hasSkus || (row.adhoc_periods && row.adhoc_periods.length > 0)) && isExpanded && (() => {
                               // Collect unique adhoc SKU rows: [periodLabel, sku, dollarPerMonth, monthsSet]
                               const adhocSkuRows: { periodLabel: string; sku: string; dollarPerMonth: number; monthsSet: Set<number> }[] = [];
                               (row.adhoc_periods || []).forEach(period => {
