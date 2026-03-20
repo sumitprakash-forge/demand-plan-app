@@ -117,7 +117,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
         // Step 3: Fetch summary
         updateStep(`${a.name}-summary`, { step: `${a.name} — building summary...`, done: false });
         try {
-          const result = await fetchSummaryAll(a.sfdc_id);
+          const result = await fetchSummaryAll(a.sfdc_id, a.contractMonths ?? 36);
           newDataMap[a.name] = result;
           updateStep(`${a.name}-summary`, { step: `${a.name} — summary ready`, done: true });
           loadedAccountsRef.current.add(a.name);
@@ -202,13 +202,19 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
     accountColorMap[a.name] = ACCOUNT_COLORS[i % ACCOUNT_COLORS.length];
   });
 
+  // Determine max years across active accounts
+  const maxYears = Math.max(
+    1,
+    ...activeAccounts.map(a => Math.max(1, Math.floor((a.contractMonths ?? 36) / 12)))
+  );
+
   // Build comparison bar chart data — per-account bars per year
   const comparisonChartData = (() => {
     const hasAnyData = Object.keys(accountDataMap).length > 0;
     if (!hasAnyData) return [];
-    return ['Year 1', 'Year 2', 'Year 3'].map((label, yi) => {
-      const yearKey = ['year1', 'year2', 'year3'][yi];
-      const entry: any = { year: label };
+    return Array.from({ length: maxYears }, (_, yi) => {
+      const yearKey = `year${yi + 1}`;
+      const entry: any = { year: `Year ${yi + 1}` };
       activeAccounts.forEach((a) => {
         for (let si = 0; si < 3; si++) {
           const scenarioData = (accountDataMap[a.name] as any)?.scenarios?.[si];
@@ -399,34 +405,8 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
           {/* All 3 Scenarios stacked */}
           {[0, 1, 2].map((idx) => {
             const scenarioNum = idx + 1;
-            // Get description from first account's scenario
             const firstScenarioData = accountDataMap[activeAccounts[0]?.name]?.scenarios?.[idx];
             const description = firstScenarioData?.description || `Scenario ${scenarioNum}`;
-
-            // Year labels — use first active account's contract start date
-            const csd = accounts.find(a => a.name === activeAccounts[0]?.name)?.contractStartDate || '';
-            const y1Label = getYearLabel(csd, 0);
-            const y2Label = getYearLabel(csd, 1);
-            const y3Label = getYearLabel(csd, 2);
-
-            // Compute per-account grand totals and cross-account grand total
-            const accountTotals = activeAccounts.map(a => {
-              const gt = getAccountGrandTotal(a.name, idx);
-              return {
-                name: a.name,
-                year1: gt?.year1 || 0,
-                year2: gt?.year2 || 0,
-                year3: gt?.year3 || 0,
-                total: gt?.total || 0,
-              };
-            });
-
-            const crossTotal = {
-              year1: accountTotals.reduce((s, a) => s + a.year1, 0),
-              year2: accountTotals.reduce((s, a) => s + a.year2, 0),
-              year3: accountTotals.reduce((s, a) => s + a.year3, 0),
-              total: accountTotals.reduce((s, a) => s + a.total, 0),
-            };
 
             return (
               <div key={scenarioNum} className="bg-white rounded-lg shadow overflow-hidden">
@@ -446,34 +426,48 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                   <table className="w-full mb-4">
                     <thead>
                       <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        <td className="py-2 pr-4" style={{ width: '40%' }}>Total $DBUs (DBCU at List)</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>{y1Label}</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>{y2Label}</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>{y3Label}</td>
-                        <td className="py-2 text-right" style={{ width: '15%' }}>Grand Total</td>
+                        <td className="py-2 pr-4" style={{ width: '35%' }}>Total $DBUs (DBCU at List)</td>
+                        {Array.from({ length: maxYears }, (_, yi) => {
+                          const csd = accounts.find(a => a.name === activeAccounts[0]?.name)?.contractStartDate || '';
+                          return <td key={yi} className="py-2 text-right text-xs">{getYearLabel(csd, yi)}</td>;
+                        })}
+                        <td className="py-2 text-right">Grand Total</td>
                       </tr>
                     </thead>
                     <tbody>
-                      {accountTotals.map((at) => (
-                        <tr key={at.name} className="border-t">
-                          <td className="py-2 pr-4 text-sm font-medium text-gray-900">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accountColorMap[at.name] }} />
-                              {at.name}
-                            </div>
-                          </td>
-                          <td className="py-2 text-sm text-right">{formatCurrency(at.year1)}</td>
-                          <td className="py-2 text-sm text-right">{formatCurrency(at.year2)}</td>
-                          <td className="py-2 text-sm text-right">{formatCurrency(at.year3)}</td>
-                          <td className="py-2 text-sm text-right font-semibold">{formatCurrency(at.total)}</td>
-                        </tr>
-                      ))}
+                      {activeAccounts.map((a) => {
+                        const gt = getAccountGrandTotal(a.name, idx);
+                        const numYears = Math.max(1, Math.floor((a.contractMonths ?? 36) / 12));
+                        return (
+                          <tr key={a.name} className="border-t">
+                            <td className="py-2 pr-4 text-sm font-medium text-gray-900">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: accountColorMap[a.name] }} />
+                                {a.name}
+                              </div>
+                            </td>
+                            {Array.from({ length: maxYears }, (_, yi) => {
+                              const val = yi < numYears ? (gt?.[`year${yi + 1}`] || 0) : null;
+                              return <td key={yi} className="py-2 text-sm text-right">{val !== null ? formatCurrency(val) : '—'}</td>;
+                            })}
+                            <td className="py-2 text-sm text-right font-semibold">{formatCurrency(gt?.total || 0)}</td>
+                          </tr>
+                        );
+                      })}
                       <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
                         <td className="py-2 pr-4 text-sm">Grand Total</td>
-                        <td className="py-2 text-sm text-right">{formatCurrency(crossTotal.year1)}</td>
-                        <td className="py-2 text-sm text-right">{formatCurrency(crossTotal.year2)}</td>
-                        <td className="py-2 text-sm text-right">{formatCurrency(crossTotal.year3)}</td>
-                        <td className="py-2 text-sm text-right">{formatCurrency(crossTotal.total)}</td>
+                        {Array.from({ length: maxYears }, (_, yi) => {
+                          const colTotal = activeAccounts.reduce((s, a) => {
+                            const numYears = Math.max(1, Math.floor((a.contractMonths ?? 36) / 12));
+                            if (yi >= numYears) return s;
+                            const gt = getAccountGrandTotal(a.name, idx);
+                            return s + (gt?.[`year${yi + 1}`] || 0);
+                          }, 0);
+                          return <td key={yi} className="py-2 text-sm text-right">{formatCurrency(colTotal)}</td>;
+                        })}
+                        <td className="py-2 text-sm text-right">{formatCurrency(
+                          activeAccounts.reduce((s, a) => s + (getAccountGrandTotal(a.name, idx)?.total || 0), 0)
+                        )}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -482,34 +476,35 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                 {/* Detail tables: Side by side if 2+ accounts, single if 1 */}
                 <div className="px-4 pb-4">
                   {activeAccounts.length === 1 ? (
-                    // Single account detail table
                     (() => {
-                      const acctName = activeAccounts[0].name;
-                      const { baselineRow, useCaseRows } = getAccountDetailRows(acctName, idx);
-                      const gt = getAccountGrandTotal(acctName, idx);
+                      const acct = activeAccounts[0];
+                      const { baselineRow, useCaseRows } = getAccountDetailRows(acct.name, idx);
+                      const gt = getAccountGrandTotal(acct.name, idx);
+                      const numYears = Math.max(1, Math.floor((acct.contractMonths ?? 36) / 12));
+                      const csd = acct.contractStartDate || '';
                       return (
                         <table className="w-full">
                           <thead>
                             <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                              <td className="py-2 pr-4" style={{ width: '40%' }}>$DBUs List</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>{y1Label}</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>{y2Label}</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>{y3Label}</td>
-                              <td className="py-2 text-right" style={{ width: '15%' }}>Total</td>
+                              <td className="py-2 pr-4" style={{ width: '35%' }}>$DBUs List</td>
+                              {Array.from({ length: numYears }, (_, yi) => (
+                                <td key={yi} className="py-2 text-right text-xs">{getYearLabel(csd, yi)}</td>
+                              ))}
+                              <td className="py-2 text-right">Total</td>
                             </tr>
                           </thead>
                           <tbody>
                             <tr className="border-t bg-gray-50">
-                              <td colSpan={5} className="py-2 text-sm font-semibold text-gray-700">
-                                Use Case Areas ({acctName.toUpperCase()})
+                              <td colSpan={numYears + 2} className="py-2 text-sm font-semibold text-gray-700">
+                                Use Case Areas ({acct.name.toUpperCase()})
                               </td>
                             </tr>
                             {baselineRow && (
                               <tr className="border-t hover:bg-gray-50">
                                 <td className="py-2 pr-4 text-sm text-gray-800">Existing - Live Use Cases</td>
-                                <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year1)}</td>
-                                <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year2)}</td>
-                                <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year3)}</td>
+                                {Array.from({ length: numYears }, (_, yi) => (
+                                  <td key={yi} className="py-2 text-sm text-right">{formatCurrency(baselineRow[`year${yi + 1}`] || 0)}</td>
+                                ))}
                                 <td className="py-2 text-sm text-right font-semibold">{formatCurrency(baselineRow.total)}</td>
                               </tr>
                             )}
@@ -518,66 +513,62 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                                 <td className="py-2 pr-4 text-sm text-gray-600 pl-2">
                                   {row.use_case_area.replace(/^\s*↳\s*/, '')}
                                 </td>
-                                <td className="py-2 text-sm text-right">{formatCurrency(row.year1)}</td>
-                                <td className="py-2 text-sm text-right">{formatCurrency(row.year2)}</td>
-                                <td className="py-2 text-sm text-right">{formatCurrency(row.year3)}</td>
+                                {Array.from({ length: numYears }, (_, yi) => (
+                                  <td key={yi} className="py-2 text-sm text-right">{formatCurrency(row[`year${yi + 1}`] || 0)}</td>
+                                ))}
                                 <td className="py-2 text-sm text-right font-semibold">{formatCurrency(row.total)}</td>
                               </tr>
                             ))}
                             <tr className="border-t-2 border-gray-300 bg-blue-50 font-bold">
                               <td className="py-2 pr-4 text-sm">Total $DBUs (DBCU at List)</td>
-                              <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year1) : '$0'}</td>
-                              <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year2) : '$0'}</td>
-                              <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year3) : '$0'}</td>
-                              <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.total) : '$0'}</td>
+                              {Array.from({ length: numYears }, (_, yi) => (
+                                <td key={yi} className="py-2 text-sm text-right">{formatCurrency(gt?.[`year${yi + 1}`] || 0)}</td>
+                              ))}
+                              <td className="py-2 text-sm text-right">{formatCurrency(gt?.total || 0)}</td>
                             </tr>
                           </tbody>
                         </table>
                       );
                     })()
                   ) : (
-                    // Side-by-side detail tables for multiple accounts — each with its own color
                     <div className="flex gap-4 overflow-x-auto">
                       {activeAccounts.map((acct) => {
                         const { baselineRow, useCaseRows } = getAccountDetailRows(acct.name, idx);
                         const gt = getAccountGrandTotal(acct.name, idx);
                         const acctColor = accountColorMap[acct.name];
+                        const numYears = Math.max(1, Math.floor((acct.contractMonths ?? 36) / 12));
+                        const csd = acct.contractStartDate || '';
                         return (
                           <div
                             key={acct.name}
                             className="flex-1 min-w-[400px] rounded-lg overflow-hidden border"
                             style={{ borderColor: acctColor }}
                           >
-                            {/* Account color header */}
                             <div
                               className="px-3 py-2 flex items-center gap-2"
                               style={{ backgroundColor: `${acctColor}18`, borderBottom: `2px solid ${acctColor}` }}
                             >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: acctColor }}
-                              />
-                              <span className="text-sm font-bold" style={{ color: acctColor }}>
-                                {acct.name}
-                              </span>
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: acctColor }} />
+                              <span className="text-sm font-bold" style={{ color: acctColor }}>{acct.name}</span>
+                              <span className="text-xs text-gray-400 ml-1">{numYears}Y contract</span>
                             </div>
                             <table className="w-full">
                               <thead>
                                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                  <td className="py-2 px-3" style={{ width: '40%' }}>$DBUs List</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>{getYearLabel(accounts.find(a => a.name === acct.name)?.contractStartDate || '', 0)}</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>{getYearLabel(accounts.find(a => a.name === acct.name)?.contractStartDate || '', 1)}</td>
-                                  <td className="py-2 text-right" style={{ width: '15%' }}>{getYearLabel(accounts.find(a => a.name === acct.name)?.contractStartDate || '', 2)}</td>
-                                  <td className="py-2 pr-3 text-right" style={{ width: '15%' }}>Total</td>
+                                  <td className="py-2 px-3" style={{ width: '35%' }}>$DBUs List</td>
+                                  {Array.from({ length: numYears }, (_, yi) => (
+                                    <td key={yi} className="py-2 text-right text-xs">{getYearLabel(csd, yi)}</td>
+                                  ))}
+                                  <td className="py-2 pr-3 text-right">Total</td>
                                 </tr>
                               </thead>
                               <tbody>
                                 {baselineRow && (
                                   <tr className="border-t hover:bg-gray-50">
                                     <td className="py-2 px-3 text-sm text-gray-800">Existing - Live Use Cases</td>
-                                    <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year1)}</td>
-                                    <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year2)}</td>
-                                    <td className="py-2 text-sm text-right">{formatCurrency(baselineRow.year3)}</td>
+                                    {Array.from({ length: numYears }, (_, yi) => (
+                                      <td key={yi} className="py-2 text-sm text-right">{formatCurrency(baselineRow[`year${yi + 1}`] || 0)}</td>
+                                    ))}
                                     <td className="py-2 pr-3 text-sm text-right font-semibold">{formatCurrency(baselineRow.total)}</td>
                                   </tr>
                                 )}
@@ -586,18 +577,18 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                                     <td className="py-2 px-3 text-sm text-gray-600 pl-4">
                                       {row.use_case_area.replace(/^\s*↳\s*/, '')}
                                     </td>
-                                    <td className="py-2 text-sm text-right">{formatCurrency(row.year1)}</td>
-                                    <td className="py-2 text-sm text-right">{formatCurrency(row.year2)}</td>
-                                    <td className="py-2 text-sm text-right">{formatCurrency(row.year3)}</td>
+                                    {Array.from({ length: numYears }, (_, yi) => (
+                                      <td key={yi} className="py-2 text-sm text-right">{formatCurrency(row[`year${yi + 1}`] || 0)}</td>
+                                    ))}
                                     <td className="py-2 pr-3 text-sm text-right font-semibold">{formatCurrency(row.total)}</td>
                                   </tr>
                                 ))}
                                 <tr className="border-t-2 font-bold" style={{ backgroundColor: `${acctColor}12` }}>
                                   <td className="py-2 px-3 text-sm" style={{ color: acctColor }}>Total</td>
-                                  <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year1) : '$0'}</td>
-                                  <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year2) : '$0'}</td>
-                                  <td className="py-2 text-sm text-right">{gt ? formatCurrency(gt.year3) : '$0'}</td>
-                                  <td className="py-2 pr-3 text-sm text-right">{gt ? formatCurrency(gt.total) : '$0'}</td>
+                                  {Array.from({ length: numYears }, (_, yi) => (
+                                    <td key={yi} className="py-2 text-sm text-right">{formatCurrency(gt?.[`year${yi + 1}`] || 0)}</td>
+                                  ))}
+                                  <td className="py-2 pr-3 text-sm text-right">{formatCurrency(gt?.total || 0)}</td>
                                 </tr>
                               </tbody>
                             </table>

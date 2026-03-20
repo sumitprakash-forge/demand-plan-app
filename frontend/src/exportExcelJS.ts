@@ -507,15 +507,14 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
   }));
 
   ws.columns = [
-    { key: 'indent', width: 3 },
-    { key: 'label',  width: 44 },
+    { key: 'label',  width: 46 },
     { key: 'y1',     width: 18 },
     { key: 'y2',     width: 18 },
     { key: 'y3',     width: 18 },
     { key: 'total',  width: 18 },
   ];
 
-  addSheetTitle(ws, 'Demand Plan Summary', 'All prices are Databricks List Price', 6);
+  addSheetTitle(ws, 'Demand Plan Summary', 'All prices are Databricks List Price', 5);
 
   for (let si = 0; si < 3; si++) {
     const sNum = si + 1;
@@ -523,17 +522,17 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
     const firstAcct = allSummaries[acctEntries[0].displayName];
     const desc = firstAcct?.scenarios?.[si]?.description || `Scenario ${sNum}`;
 
-    const secRow = ws.addRow(['', `SCENARIO ${sNum}  ·  ${desc.toUpperCase()}`]);
+    const secRow = ws.addRow([`SCENARIO ${sNum}  ·  ${desc.toUpperCase()}`]);
     secRow.height = 22;
-    secRow.getCell(2).style = {
+    secRow.getCell(1).style = {
       font: { bold: true, size: 12, color: rgb('FFFFFF'), name: 'Calibri' },
       fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(sc.bg) },
       alignment: { vertical: 'middle', indent: 1 },
     };
-    ws.mergeCells(secRow.number, 2, secRow.number, 6);
+    ws.mergeCells(secRow.number, 1, secRow.number, 5);
     ws.addRow([]);
 
-    const sh = ws.addRow(['', 'SUMMARY  —  Total $DBUs (List)', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
+    const sh = ws.addRow(['SUMMARY  —  Total $DBUs (List)', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
     applyRowStyle(sh, headerStyle(sc.bg));
     sh.height = 20;
 
@@ -542,11 +541,11 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
       const gt = allSummaries[displayName]?.scenarios?.[si]?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
       const y1 = gt?.year1 || 0, y2 = gt?.year2 || 0, y3 = gt?.year3 || 0, tot = gt?.total || 0;
       crossY1 += y1; crossY2 += y2; crossY3 += y3; crossTotal += tot;
-      const dr = ws.addRow(['', displayName, y1, y2, y3, tot]);
+      const dr = ws.addRow([displayName, y1, y2, y3, tot]);
       applyRowStyle(dr, dataStyle(idx % 2 === 1), USD_FMT);
     });
 
-    const gtr = ws.addRow(['', 'Grand Total', crossY1, crossY2, crossY3, crossTotal]);
+    const gtr = ws.addRow(['Grand Total', crossY1, crossY2, crossY3, crossTotal]);
     applyRowStyle(gtr, totalStyle(GRAND_BG));
     gtr.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = USD_FMT; });
 
@@ -560,20 +559,20 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
       );
       const ucRows: any[] = acctData?.summary_rows?.filter((r: any) => r.is_use_case) || [];
 
-      const dh = ws.addRow(['', `${name.toUpperCase()}  —  $DBUs List`, 'Year 1', 'Year 2', 'Year 3', 'Total']);
+      const dh = ws.addRow([`${name.toUpperCase()}  —  $DBUs List`, 'Year 1', 'Year 2', 'Year 3', 'Total']);
       applyRowStyle(dh, headerStyle(SUBHEADER_BG, SUBHEADER_FG));
 
       if (baseRow) {
-        const br = ws.addRow(['', 'Existing — Live Use Cases', baseRow.year1, baseRow.year2, baseRow.year3, baseRow.total]);
+        const br = ws.addRow(['Existing — Live Use Cases', baseRow.year1, baseRow.year2, baseRow.year3, baseRow.total]);
         applyRowStyle(br, dataStyle(false), USD_FMT);
       }
       ucRows.forEach((row, idx) => {
         const ucName = (row.use_case_area || '').replace(/^\s*↳\s*/, '').trim();
-        const r = ws.addRow(['', '  ↳ ' + ucName, row.year1, row.year2, row.year3, row.total]);
+        const r = ws.addRow(['  ↳ ' + ucName, row.year1, row.year2, row.year3, row.total]);
         applyRowStyle(r, dataStyle(idx % 2 === 1), USD_FMT);
       });
 
-      const tot = ws.addRow(['', `Total (${name})`, grandTotal?.year1 || 0, grandTotal?.year2 || 0, grandTotal?.year3 || 0, grandTotal?.total || 0]);
+      const tot = ws.addRow([`Total (${name})`, grandTotal?.year1 || 0, grandTotal?.year2 || 0, grandTotal?.year3 || 0, grandTotal?.total || 0]);
       applyRowStyle(tot, totalStyle());
       tot.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = USD_FMT; });
       ws.addRow([]);

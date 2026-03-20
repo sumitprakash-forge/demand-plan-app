@@ -9,6 +9,7 @@ interface Props {
 interface InnerProps {
   account: string;
   contractStartDate?: string;
+  contractMonths?: number;
 }
 
 const MONTH_NAMES_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -134,13 +135,13 @@ function generateId() {
 }
 
 // Calculate monthly DBU for a use case based on ramp type
-function calcUseCaseMonthly(uc: NewUseCase): number[] {
-  const months = new Array(36).fill(0);
+function calcUseCaseMonthly(uc: NewUseCase, totalMonths = 36): number[] {
+  const months = new Array(totalMonths).fill(0);
   if (uc.steadyStateDbu <= 0 || uc.liveMonth <= uc.onboardingMonth) return months;
 
   const rampMonths = uc.liveMonth - uc.onboardingMonth;
 
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < totalMonths; i++) {
     const m = i + 1; // 1-indexed month
     if (m < uc.onboardingMonth) {
       months[i] = 0;
@@ -175,7 +176,7 @@ function recalcSkuBreakdown(
   });
 }
 
-function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
+function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }: InnerProps) {
   const [scenario, setScenario] = useState(1);
   const [baselineGrowthRate, setBaselineGrowthRate] = useState(2); // % MoM
   const [assumptionsText, setAssumptionsText] = useState('');
@@ -425,31 +426,33 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
   // Filter use cases for current scenario
   const activeUseCases = newUseCases.filter(uc => uc.scenarios[scenario - 1]);
 
+  const numYears = Math.max(1, Math.floor(contractMonths / 12));
+
   // Projections
   const projections = React.useMemo(() => {
     const momRate = baselineGrowthRate / 100 / 12;
     const totalBaselineMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
 
     // Baseline projection (all historical consumption with growth, overrides applied)
-    const baselineMonths = new Array(36).fill(0);
-    for (let i = 0; i < 36; i++) {
+    const baselineMonths = new Array(contractMonths).fill(0);
+    for (let i = 0; i < contractMonths; i++) {
       const computed = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
       baselineMonths[i] = i in baselineOverrides ? baselineOverrides[i] : computed;
     }
 
     // New use case projections (only for current scenario)
-    const ucMonths = new Array(36).fill(0);
+    const ucMonths = new Array(contractMonths).fill(0);
     activeUseCases.forEach(uc => {
-      const ucM = calcUseCaseMonthly(uc);
-      for (let i = 0; i < 36; i++) ucMonths[i] += ucM[i];
+      const ucM = calcUseCaseMonthly(uc, contractMonths);
+      for (let i = 0; i < contractMonths; i++) ucMonths[i] += ucM[i];
     });
 
     // Totals
     const totalMonths = baselineMonths.map((b, i) => b + ucMonths[i]);
-    const yearTotals = [0, 0, 0];
-    const baseYearTotals = [0, 0, 0];
-    const ucYearTotals = [0, 0, 0];
-    for (let i = 0; i < 36; i++) {
+    const yearTotals = new Array(numYears).fill(0);
+    const baseYearTotals = new Array(numYears).fill(0);
+    const ucYearTotals = new Array(numYears).fill(0);
+    for (let i = 0; i < contractMonths; i++) {
       const y = Math.floor(i / 12);
       yearTotals[y] += totalMonths[i];
       baseYearTotals[y] += baselineMonths[i];
@@ -457,7 +460,7 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
     }
 
     return { baselineMonths, ucMonths, totalMonths, yearTotals, baseYearTotals, ucYearTotals };
-  }, [domainBaselines, baselineGrowthRate, activeUseCases, baselineOverrides]);
+  }, [domainBaselines, baselineGrowthRate, activeUseCases, baselineOverrides, contractMonths]);
 
   const totalBaseline = domainBaselines.reduce((s, b) => s + b.t12m, 0);
 
@@ -521,26 +524,20 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
       {!loading && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${numYears + 2}, minmax(0, 1fr))` }}>
             <div className="bg-white rounded-lg shadow p-4">
               <div className="text-[10px] text-gray-500 uppercase">T12M Baseline</div>
               <div className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(totalBaseline)}</div>
             </div>
+            {projections.yearTotals.map((val, yi) => (
+              <div key={yi} className="bg-white rounded-lg shadow p-4">
+                <div className="text-[10px] text-gray-500 uppercase">Year {yi + 1} Projected</div>
+                <div className="text-lg font-bold text-blue-600 mt-1">{formatCurrency(val)}</div>
+                {yi === 0 && <div className="text-[10px] text-gray-400">Base: {formatCurrency(projections.baseYearTotals[0])} + UC: {formatCurrency(projections.ucYearTotals[0])}</div>}
+              </div>
+            ))}
             <div className="bg-white rounded-lg shadow p-4">
-              <div className="text-[10px] text-gray-500 uppercase">Year 1 Projected</div>
-              <div className="text-lg font-bold text-blue-600 mt-1">{formatCurrency(projections.yearTotals[0])}</div>
-              <div className="text-[10px] text-gray-400">Base: {formatCurrency(projections.baseYearTotals[0])} + UC: {formatCurrency(projections.ucYearTotals[0])}</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="text-[10px] text-gray-500 uppercase">Year 2 Projected</div>
-              <div className="text-lg font-bold text-blue-600 mt-1">{formatCurrency(projections.yearTotals[1])}</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="text-[10px] text-gray-500 uppercase">Year 3 Projected</div>
-              <div className="text-lg font-bold text-blue-600 mt-1">{formatCurrency(projections.yearTotals[2])}</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="text-[10px] text-gray-500 uppercase">3-Year Total</div>
+              <div className="text-[10px] text-gray-500 uppercase">{numYears}-Year Total</div>
               <div className="text-lg font-bold text-purple-600 mt-1">{formatCurrency(projections.yearTotals.reduce((a, b) => a + b, 0))}</div>
             </div>
           </div>
@@ -638,7 +635,7 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
               <div className="border-t px-4 py-4">
                 <div className="overflow-x-auto">
                   <div className="flex gap-1 pb-2" style={{ minWidth: 'max-content' }}>
-                    {Array.from({ length: 36 }, (_, i) => {
+                    {Array.from({ length: contractMonths }, (_, i) => {
                       const monthLabel = getMonthLabel(i + 1, contractStartDate);
                       const isOverridden = i in baselineOverrides;
                       const totalBaselineMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
@@ -699,45 +696,43 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
           {/* Projection Summary */}
           <div className="bg-white rounded-lg shadow overflow-auto">
             <div className="px-4 py-3 bg-gray-50 border-b">
-              <h3 className="text-sm font-semibold text-gray-700">Scenario {scenario} -- 3-Year Projection</h3>
+              <h3 className="text-sm font-semibold text-gray-700">Scenario {scenario} — {numYears}-Year Projection</h3>
             </div>
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50">
                   <th className="px-3 py-2 text-left font-medium text-gray-600 sticky left-0 bg-gray-50 min-w-[140px]">Category</th>
-                  <th className="px-3 py-2 text-right font-medium text-blue-600 bg-blue-50">Year 1</th>
-                  <th className="px-3 py-2 text-right font-medium text-blue-600 bg-blue-50">Year 2</th>
-                  <th className="px-3 py-2 text-right font-medium text-blue-600 bg-blue-50">Year 3</th>
+                  {Array.from({ length: numYears }, (_, yi) => (
+                    <th key={yi} className="px-3 py-2 text-right font-medium text-blue-600 bg-blue-50">Year {yi + 1}</th>
+                  ))}
                   <th className="px-3 py-2 text-right font-medium text-purple-600 bg-purple-50">Total</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="border-t hover:bg-gray-50">
                   <td className="px-3 py-2 font-medium sticky left-0 bg-white">Existing Baseline (with {baselineGrowthRate}% MoM growth)</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(projections.baseYearTotals[0])}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(projections.baseYearTotals[1])}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(projections.baseYearTotals[2])}</td>
+                  {projections.baseYearTotals.map((v, yi) => (
+                    <td key={yi} className="px-3 py-2 text-right">{formatCurrency(v)}</td>
+                  ))}
                   <td className="px-3 py-2 text-right font-medium bg-gray-50">{formatCurrency(projections.baseYearTotals.reduce((a, b) => a + b, 0))}</td>
                 </tr>
                 {activeUseCases.map(uc => {
-                  const ucM = calcUseCaseMonthly(uc);
-                  const yT = [0, 0, 0];
+                  const ucM = calcUseCaseMonthly(uc, contractMonths);
+                  const yT = new Array(numYears).fill(0);
                   ucM.forEach((v, i) => { yT[Math.floor(i / 12)] += v; });
                   return (
                     <tr key={uc.id} className="border-t hover:bg-gray-50">
                       <td className="px-3 py-2 text-gray-700 sticky left-0 bg-white pl-6">{'>'} {uc.name || 'Unnamed'}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(yT[0])}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(yT[1])}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(yT[2])}</td>
+                      {yT.map((v, yi) => <td key={yi} className="px-3 py-2 text-right">{formatCurrency(v)}</td>)}
                       <td className="px-3 py-2 text-right bg-gray-50">{formatCurrency(yT.reduce((a, b) => a + b, 0))}</td>
                     </tr>
                   );
                 })}
                 <tr className="border-t-2 border-gray-300 bg-blue-50 font-bold">
                   <td className="px-3 py-2 sticky left-0 bg-blue-50">Grand Total</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(projections.yearTotals[0])}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(projections.yearTotals[1])}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(projections.yearTotals[2])}</td>
+                  {projections.yearTotals.map((v, yi) => (
+                    <td key={yi} className="px-3 py-2 text-right">{formatCurrency(v)}</td>
+                  ))}
                   <td className="px-3 py-2 text-right bg-purple-100">{formatCurrency(projections.yearTotals.reduce((a, b) => a + b, 0))}</td>
                 </tr>
               </tbody>
@@ -796,8 +791,8 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
               ];
               const ucColor = UC_COLORS[ucIdx % UC_COLORS.length];
               const isExpanded = expandedUC === uc.id;
-              const ucMonthly = calcUseCaseMonthly(uc);
-              const ucYearTotals = [0, 0, 0];
+              const ucMonthly = calcUseCaseMonthly(uc, contractMonths);
+              const ucYearTotals = new Array(numYears).fill(0);
               ucMonthly.forEach((v, i) => { ucYearTotals[Math.floor(i / 12)] += v; });
               return (
                 <div key={uc.id} className={`border-l-4 ${ucColor.border}`}>
@@ -827,7 +822,9 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
                           <span className="text-amber-600 font-medium">Onboard: {getMonthLabel(uc.onboardingMonth, contractStartDate)}</span>
                           &nbsp;→&nbsp;
                           <span className="text-green-600 font-medium">Live: {getMonthLabel(uc.liveMonth, contractStartDate)}</span>
-                          &nbsp;·&nbsp; Y1: {formatCurrency(ucYearTotals[0])} &nbsp;·&nbsp; Y2: {formatCurrency(ucYearTotals[1])} &nbsp;·&nbsp; Y3: {formatCurrency(ucYearTotals[2])}
+                          {ucYearTotals.map((v, yi) => (
+                            <span key={yi}>&nbsp;·&nbsp; Y{yi + 1}: {formatCurrency(v)}</span>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -927,7 +924,7 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
                           <label className="block text-xs font-medium text-gray-600 mb-1">Onboarding Month</label>
                           <select value={uc.onboardingMonth} onChange={(e) => updateUC(uc.id, { onboardingMonth: parseInt(e.target.value) })}
                             className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                            {Array.from({ length: 36 }, (_, i) => (
+                            {Array.from({ length: contractMonths }, (_, i) => (
                               <option key={i + 1} value={i + 1}>{getMonthLabel(i + 1, contractStartDate)}</option>
                             ))}
                           </select>
@@ -936,7 +933,7 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
                           <label className="block text-xs font-medium text-gray-600 mb-1">Live Month (Steady State)</label>
                           <select value={uc.liveMonth} onChange={(e) => updateUC(uc.id, { liveMonth: parseInt(e.target.value) })}
                             className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm">
-                            {Array.from({ length: 36 }, (_, i) => (
+                            {Array.from({ length: contractMonths }, (_, i) => (
                               <option key={i + 1} value={i + 1} disabled={i + 1 <= uc.onboardingMonth}>
                                 {getMonthLabel(i + 1, contractStartDate)}
                               </option>
@@ -1068,7 +1065,7 @@ function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
                       <div className="bg-gray-50 rounded-lg p-3">
                         <div className="text-[10px] font-medium text-gray-500 uppercase mb-2">Monthly Ramp Preview</div>
                         <div className="flex items-end gap-px h-16">
-                          {ucMonthly.slice(0, 36).map((v, i) => {
+                          {ucMonthly.map((v, i) => {
                             const maxVal = Math.max(...ucMonthly, 1);
                             const pct = (v / maxVal) * 100;
                             const isOnboard = i + 1 === uc.onboardingMonth;
@@ -1135,6 +1132,7 @@ export default function ScenarioTab({ accounts }: Props) {
           <ScenarioAccountView
             account={acct.sfdc_id}
             contractStartDate={acct.contractStartDate}
+            contractMonths={acct.contractMonths ?? 36}
           />
         </div>
       ))}

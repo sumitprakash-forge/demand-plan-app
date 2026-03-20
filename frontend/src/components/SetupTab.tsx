@@ -640,6 +640,7 @@ function AccountPickerStep({
         name: r.sfdc_account_name,
         sfdc_id: r.sfdc_account_id,
         contractStartDate: '',
+        contractMonths: 36,
       }));
     if (newAccounts.length > 0) {
       // Replace blank placeholder if present
@@ -799,19 +800,38 @@ function AccountPickerStep({
                           </div>
                         </div>
                         <div className="space-y-3">
-                          <div>
-                            <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Contract Start (M1)</label>
-                            <input
-                              type="month"
-                              value={acct.contractStartDate || ''}
-                              onChange={e => {
-                                const updated = [...accounts];
-                                const realIdx = accounts.findIndex(a => a.sfdc_id === acct.sfdc_id);
-                                updated[realIdx] = { ...updated[realIdx], contractStartDate: e.target.value };
-                                setAccounts(updated);
-                              }}
-                              className="border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            />
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Contract Start (M1)</label>
+                              <input
+                                type="month"
+                                value={acct.contractStartDate || ''}
+                                onChange={e => {
+                                  const updated = [...accounts];
+                                  const realIdx = accounts.findIndex(a => a.sfdc_id === acct.sfdc_id);
+                                  updated[realIdx] = { ...updated[realIdx], contractStartDate: e.target.value };
+                                  setAccounts(updated);
+                                }}
+                                className="border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Contract Term</label>
+                              <select
+                                value={acct.contractMonths ?? 36}
+                                onChange={e => {
+                                  const updated = [...accounts];
+                                  const realIdx = accounts.findIndex(a => a.sfdc_id === acct.sfdc_id);
+                                  updated[realIdx] = { ...updated[realIdx], contractMonths: Number(e.target.value) };
+                                  setAccounts(updated);
+                                }}
+                                className="border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              >
+                                <option value={12}>1 Year</option>
+                                <option value={36}>3 Years</option>
+                                <option value={60}>5 Years</option>
+                              </select>
+                            </div>
                           </div>
                           <DomainMapUpload account={acct.sfdc_id || acct.name} />
                         </div>

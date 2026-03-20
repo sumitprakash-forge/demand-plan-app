@@ -379,32 +379,33 @@ async def get_sku_prices(
 # Summary
 # ---------------------------------------------------------------------------
 
-def _calc_use_case_monthly(uc: dict) -> list[float]:
-    """Calculate 36-month projection for a use case with ramp."""
-    months = [0.0] * 36
+def _calc_use_case_monthly(uc: dict, total_months: int = 36) -> list[float]:
+    """Calculate monthly projection for a use case with ramp up to total_months."""
+    result = [0.0] * total_months
     ss = uc.get("steadyStateDbu") or uc.get("steady_state_dbu") or 0
     om = uc.get("onboardingMonth") or uc.get("onboarding_month") or 1
     lm = uc.get("liveMonth") or uc.get("live_month") or 6
     ramp = uc.get("rampType") or uc.get("ramp_type") or "linear"
     if ss <= 0 or lm <= om:
-        return months
+        return result
     ramp_months = lm - om
-    for i in range(36):
+    for i in range(total_months):
         m = i + 1
         if m < om:
-            months[i] = 0
+            result[i] = 0
         elif m >= lm:
-            months[i] = ss
+            result[i] = ss
         else:
             progress = (m - om + 1) / (ramp_months + 1)
-            months[i] = ss * progress if ramp == "linear" else ss * (progress ** 2.5)
-    return months
+            result[i] = ss * progress if ramp == "linear" else ss * (progress ** 2.5)
+    return result
 
 
 @app.get("/api/summary")
 async def get_summary(
     account: str = Query(default="Walmart"),
     scenario: int = Query(default=1),
+    contract_months: int = Query(default=36),
     user: dict = Depends(get_current_user),
 ):
     """Return demand plan summary — pulls projections from saved scenario config."""
@@ -454,6 +455,9 @@ async def get_summary(
     else:
         scenario_data = _load_json(f"scenario_{key}", ud)
 
+    # Derive number of contract years
+    num_years = max(1, contract_months // 12)
+
     # Baseline growth rate
     baseline_growth = 0.02  # default 2% MoM
     if scenario_data:
@@ -461,65 +465,61 @@ async def get_summary(
 
     # Calculate baseline projection (compound monthly growth)
     mom_rate = baseline_growth / 12
-    baseline_year_totals = [0.0, 0.0, 0.0]
-    for i in range(36):
+    baseline_year_totals = [0.0] * num_years
+    for i in range(contract_months):
         monthly = avg_monthly * ((1 + mom_rate) ** (i + 1))
-        baseline_year_totals[i // 12] += monthly
+        if i // 12 < num_years:
+            baseline_year_totals[i // 12] += monthly
 
     # Calculate use case projections (only for this scenario)
     use_cases = (scenario_data or {}).get("new_use_cases", [])
     active_ucs = [uc for uc in use_cases if uc.get("scenarios", [False, False, False])[scenario - 1]]
 
     uc_rows = []
-    uc_year_totals = [0.0, 0.0, 0.0]
+    uc_year_totals = [0.0] * num_years
     for uc in active_ucs:
-        uc_monthly = _calc_use_case_monthly(uc)
-        yt = [0.0, 0.0, 0.0]
+        uc_monthly = _calc_use_case_monthly(uc, total_months=contract_months)
+        yt = [0.0] * num_years
         for i, v in enumerate(uc_monthly):
-            yt[i // 12] += v
-            uc_year_totals[i // 12] += v
-        uc_rows.append({
+            if i // 12 < num_years:
+                yt[i // 12] += v
+                uc_year_totals[i // 12] += v
+        row: dict = {
             "use_case_area": f"  ↳ {uc.get('name', 'Unnamed')}",
-            "year1": round(yt[0]),
-            "year2": round(yt[1]),
-            "year3": round(yt[2]),
             "total": round(sum(yt)),
             "is_use_case": True,
-        })
+        }
+        for y in range(num_years):
+            row[f"year{y+1}"] = round(yt[y])
+        uc_rows.append(row)
 
-    # Build summary rows
-    summary_rows = [
-        {
-            "use_case_area": f"Existing Baseline ({baseline_growth*100:.1f}% MoM growth)",
-            "year1": round(baseline_year_totals[0]),
-            "year2": round(baseline_year_totals[1]),
-            "year3": round(baseline_year_totals[2]),
-            "total": round(sum(baseline_year_totals)),
-        },
-    ]
+    # Build summary rows dynamically
+    baseline_row: dict = {
+        "use_case_area": f"Existing Baseline ({baseline_growth*100:.1f}% MoM growth)",
+        "total": round(sum(baseline_year_totals)),
+    }
+    for y in range(num_years):
+        baseline_row[f"year{y+1}"] = round(baseline_year_totals[y])
+    summary_rows = [baseline_row]
 
-    # Add each use case as a sub-row
     if uc_rows:
-        summary_rows.append({
+        uc_header: dict = {
             "use_case_area": "New Use Cases",
-            "year1": round(uc_year_totals[0]),
-            "year2": round(uc_year_totals[1]),
-            "year3": round(uc_year_totals[2]),
             "total": round(sum(uc_year_totals)),
-        })
+        }
+        for y in range(num_years):
+            uc_header[f"year{y+1}"] = round(uc_year_totals[y])
+        summary_rows.append(uc_header)
         summary_rows.extend(uc_rows)
 
-    # Grand total
-    grand_y1 = baseline_year_totals[0] + uc_year_totals[0]
-    grand_y2 = baseline_year_totals[1] + uc_year_totals[1]
-    grand_y3 = baseline_year_totals[2] + uc_year_totals[2]
-    summary_rows.append({
+    grand_year_totals = [baseline_year_totals[y] + uc_year_totals[y] for y in range(num_years)]
+    grand_row: dict = {
         "use_case_area": "Grand Total",
-        "year1": round(grand_y1),
-        "year2": round(grand_y2),
-        "year3": round(grand_y3),
-        "total": round(grand_y1 + grand_y2 + grand_y3),
-    })
+        "total": round(sum(grand_year_totals)),
+    }
+    for y in range(num_years):
+        grand_row[f"year{y+1}"] = round(grand_year_totals[y])
+    summary_rows.append(grand_row)
 
     # Domain breakdown for pie chart
     domain_breakdown = [
@@ -529,9 +529,13 @@ async def get_summary(
 
     # Yearly trend — show baseline + use cases stacked
     yearly_trend = [
-        {"year": "Year 1", "value": round(grand_y1), "baseline": round(baseline_year_totals[0]), "new_uc": round(uc_year_totals[0])},
-        {"year": "Year 2", "value": round(grand_y2), "baseline": round(baseline_year_totals[1]), "new_uc": round(uc_year_totals[1])},
-        {"year": "Year 3", "value": round(grand_y3), "baseline": round(baseline_year_totals[2]), "new_uc": round(uc_year_totals[2])},
+        {
+            "year": f"Year {y+1}",
+            "value": round(grand_year_totals[y]),
+            "baseline": round(baseline_year_totals[y]),
+            "new_uc": round(uc_year_totals[y]),
+        }
+        for y in range(num_years)
     ]
 
     # Scenario description from assumptions_text or defaults
@@ -680,13 +684,14 @@ async def get_consumption_forecast(
 @app.get("/api/summary-all")
 async def get_summary_all(
     account: str = Query(default="Walmart"),
+    contract_months: int = Query(default=36),
     user: dict = Depends(get_current_user),
 ):
     """Return summary for all 3 scenarios (fetched in parallel)."""
     results = await asyncio.gather(
-        get_summary(account, 1, user),
-        get_summary(account, 2, user),
-        get_summary(account, 3, user),
+        get_summary(account, 1, contract_months, user),
+        get_summary(account, 2, contract_months, user),
+        get_summary(account, 3, contract_months, user),
     )
     return {"account": account, "scenarios": list(results)}
 

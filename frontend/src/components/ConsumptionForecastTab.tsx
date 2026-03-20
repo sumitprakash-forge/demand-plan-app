@@ -321,7 +321,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [months, setMonths] = useState(24);
+  const [months, setMonths] = useState(() => accounts[0]?.contractMonths ?? 36);
   const [conflictAccount, setConflictAccount] = useState<string | null>(null);
   const [collapsedUCIds, setCollapsedUCIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'dollar' | 'dbu'>('dollar');

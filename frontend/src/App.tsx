@@ -7,14 +7,14 @@ import OverviewTab from './components/OverviewTab';
 import ConsumptionForecastTab from './components/ConsumptionForecastTab';
 import SetupTab from './components/SetupTab';
 import LoginPage from './components/LoginPage';
-import { exportToXLS } from './export';
-import { exportToExcelJS, exportToExcelJSAndUpload } from './exportExcelJS';
+import { exportToExcelJS } from './exportExcelJS';
 import { fetchConsumption, fetchDomainMap, fetchScenario } from './api';
 
 export interface AccountConfig {
   name: string;        // Display name
   sfdc_id: string;     // SFDC Account ID — always used as the backend key for all data
   contractStartDate: string; // YYYY-MM, e.g. "2026-04" — defines M1 of Year 1
+  contractMonths: number;   // 12 = 1yr, 36 = 3yr, 60 = 5yr
 }
 
 const TABS = [
@@ -27,7 +27,7 @@ const TABS = [
 ];
 
 const DEFAULT_ACCOUNTS: AccountConfig[] = [
-  { name: 'Kroger', sfdc_id: 'Kroger', contractStartDate: '' },
+  { name: 'Kroger', sfdc_id: 'Kroger', contractStartDate: '', contractMonths: 36 },
 ];
 
 // Calculate use case monthly projection (same logic as ScenarioTab)
@@ -58,7 +58,7 @@ function loadSavedAccounts(): AccountConfig[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch { /* ignore */ }
-  return [{ name: '', sfdc_id: '', contractStartDate: '' }];
+  return [{ name: '', sfdc_id: '', contractStartDate: '', contractMonths: 36 }];
 }
 
 export default function App() {
@@ -102,11 +102,9 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
   const [activeTab, setActiveTab] = useState('setup');
   const [accounts, setAccounts] = useState<AccountConfig[]>(loadSavedAccounts);
   const [exporting, setExporting] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState<Record<string, boolean>>({});
   const [loadStatus, setLoadStatus] = useState<Record<string, 'ok' | 'error'>>({});
-  const [driveToast, setDriveToast] = useState<{ url: string; filename: string } | null>(null);
 
   // Persist accounts to localStorage whenever they change
   useEffect(() => {
@@ -121,7 +119,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
   };
 
   const addAccount = () => {
-    setAccounts(prev => [...prev, { name: '', sfdc_id: '', contractStartDate: '' }]);
+    setAccounts(prev => [...prev, { name: '', sfdc_id: '', contractStartDate: '', contractMonths: 36 }]);
   };
 
   const removeAccount = (index: number) => {
@@ -151,7 +149,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
       await fetch('/api/clear-data', { method: 'DELETE' });
     } catch { /* ignore network errors */ }
     localStorage.removeItem('demandplan_accounts');
-    setAccounts([{ name: '', sfdc_id: '', contractStartDate: '' }]);
+    setAccounts([{ name: '', sfdc_id: '', contractStartDate: '', contractMonths: 36 }]);
     setClearing(false);
     window.location.reload();
   }, []);
@@ -262,47 +260,14 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
     return { account, accountsData };
   }, [accounts]);
 
-  const handleExportFormatted = useCallback(async () => {
+  const handleExport = useCallback(async () => {
     setExporting(true);
-    setShowExportMenu(false);
     try {
       const payload = await buildExportPayload();
-      const filename = await exportToExcelJS({ accounts, ...payload });
-      console.log('Formatted export:', filename);
+      await exportToExcelJS({ accounts, ...payload });
     } catch (e: any) {
-      console.error('Formatted export failed:', e);
+      console.error('Export failed:', e);
       alert('Export failed: ' + e.message);
-    } finally {
-      setExporting(false);
-    }
-  }, [accounts, buildExportPayload]);
-
-  const handleExportXLS = useCallback(async () => {
-    setExporting(true);
-    setShowExportMenu(false);
-    try {
-      const payload = await buildExportPayload();
-      const filename = await exportToXLS({ accounts, ...payload });
-      console.log('Basic export:', filename);
-    } catch (e: any) {
-      console.error('Basic export failed:', e);
-      alert('Export failed: ' + e.message);
-    } finally {
-      setExporting(false);
-    }
-  }, [accounts, buildExportPayload]);
-
-  const handleUploadToDrive = useCallback(async () => {
-    setExporting(true);
-    setShowExportMenu(false);
-    try {
-      const payload = await buildExportPayload();
-      const { filename, driveUrl } = await exportToExcelJSAndUpload({ accounts, ...payload });
-      setDriveToast({ url: driveUrl, filename });
-      setTimeout(() => setDriveToast(null), 12000);
-    } catch (e: any) {
-      console.error('Drive upload failed:', e);
-      alert('Upload to Drive failed: ' + e.message);
     } finally {
       setExporting(false);
     }
@@ -364,11 +329,11 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
               </div>
 
               {/* Export Button */}
-              <div className="relative">
+              <div className="mt-4">
                 <button
-                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  onClick={handleExport}
                   disabled={exporting}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50 mt-4"
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50"
                 >
                   {exporting ? (
                     <>
@@ -384,95 +349,15 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       Export XLS
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
                     </>
                   )}
                 </button>
-
-                {showExportMenu && (
-                  <div className="absolute right-0 mt-1 w-60 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                    <button onClick={handleExportFormatted}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-3">
-                      <svg className="w-5 h-5 text-indigo-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      <div>
-                        <div className="font-medium text-indigo-700">Formatted Export</div>
-                        <div className="text-[11px] text-gray-400">Colors, headers, freeze panes</div>
-                      </div>
-                    </button>
-                    <div className="border-t border-gray-100" />
-                    <button onClick={handleExportXLS}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3">
-                      <svg className="w-5 h-5 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <div>
-                        <div className="font-medium">Basic Export</div>
-                        <div className="text-[11px] text-gray-400">Plain data, all scenarios</div>
-                      </div>
-                    </button>
-                    <div className="border-t border-gray-100" />
-                    <button onClick={handleUploadToDrive}
-                      className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3">
-                      <svg className="w-5 h-5 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12.01 2C6.49 2 2.02 6.48 2.02 12s4.47 10 9.99 10C17.53 22 22 17.52 22 12S17.53 2 12.01 2zm3.93 12.37l-3.4 3.4c-.29.29-.77.29-1.06 0l-3.4-3.4a.75.75 0 011.06-1.06l2.12 2.12V8.5a.75.75 0 011.5 0v6.93l2.12-2.12a.75.75 0 011.06 1.06z" />
-                      </svg>
-                      <div>
-                        <div className="font-medium text-blue-700">Upload to Google Drive</div>
-                        <div className="text-[11px] text-gray-400">Formatted export → save to Drive</div>
-                      </div>
-                    </button>
-                    <div className="border-t border-gray-100 mt-1" />
-                    <div className="px-4 py-1.5 text-[10px] text-gray-400">
-                      Exports all 3 scenarios · 10 sheets
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Click outside to close menu */}
-      {showExportMenu && <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />}
-
-      {/* Drive upload toast */}
-      {driveToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-white border border-blue-200 rounded-xl shadow-lg px-5 py-4 flex items-start gap-3 w-96">
-          <svg className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12.01 2C6.49 2 2.02 6.48 2.02 12s4.47 10 9.99 10C17.53 22 22 17.52 22 12S17.53 2 12.01 2zm-1.01 14.5l-3.5-3.5 1.41-1.41L11 13.67l5.09-5.08 1.41 1.41L11 16.5z" />
-          </svg>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-800">Uploaded to Google Drive</p>
-            <p className="text-xs text-slate-500 truncate mt-0.5">{driveToast.filename}</p>
-            <div className="mt-2 flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-1">
-              <span className="text-[11px] text-slate-600 font-mono truncate flex-1">{driveToast.url}</span>
-              <button
-                onClick={() => navigator.clipboard.writeText(driveToast.url)}
-                title="Copy link"
-                className="text-slate-400 hover:text-blue-600 shrink-0"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </button>
-            </div>
-            <a
-              href={driveToast.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:underline font-medium mt-1.5 inline-block"
-            >
-              Open in Drive →
-            </a>
-          </div>
-          <button onClick={() => setDriveToast(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
-        </div>
-      )}
 
       {/* Tab Bar */}
       <nav className="bg-white border-b border-gray-200">

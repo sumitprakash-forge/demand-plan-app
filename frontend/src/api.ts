@@ -45,14 +45,14 @@ export async function uploadConsumptionCSV(account: string, file: File) {
   return res.json();
 }
 
-export async function fetchSummary(account: string, scenario: number) {
-  const res = await fetch(`${BASE}/summary?account=${encodeURIComponent(account)}&scenario=${scenario}`);
+export async function fetchSummary(account: string, scenario: number, contractMonths = 36) {
+  const res = await fetch(`${BASE}/summary?account=${encodeURIComponent(account)}&scenario=${scenario}&contract_months=${contractMonths}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function fetchSummaryAll(account: string) {
-  const res = await fetch(`${BASE}/summary-all?account=${encodeURIComponent(account)}`);
+export async function fetchSummaryAll(account: string, contractMonths = 36) {
+  const res = await fetch(`${BASE}/summary-all?account=${encodeURIComponent(account)}&contract_months=${contractMonths}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
