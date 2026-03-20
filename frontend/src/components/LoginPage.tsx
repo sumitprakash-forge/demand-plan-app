@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 
 const DEFAULT_HOST = 'https://adb-2548836972759138.18.azuredatabricks.net';
 
@@ -7,7 +7,15 @@ interface Props {
 }
 
 export default function LoginPage({ onLogin }: Props) {
-  const [host, setHost] = useState(DEFAULT_HOST);
+  const [host] = useState(DEFAULT_HOST);
+  const [copied, setCopied] = useState(false);
+
+  const copyHost = useCallback(() => {
+    navigator.clipboard.writeText(DEFAULT_HOST).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, []);
   const [pat, setPat] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -58,8 +66,32 @@ export default function LoginPage({ onLogin }: Props) {
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
                 Logfood Workspace URL
               </label>
-              <div className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-500 bg-slate-50 font-mono truncate select-none">
-                {DEFAULT_HOST}
+              <div className="flex items-center gap-2">
+                <div className="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-500 bg-slate-50 font-mono truncate">
+                  {DEFAULT_HOST}
+                </div>
+                <button
+                  type="button"
+                  onClick={copyHost}
+                  className="flex-shrink-0 flex items-center gap-1 px-2.5 py-2 text-xs border border-slate-200 rounded-lg bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-700 transition-colors"
+                  title="Copy URL"
+                >
+                  {copied ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-green-600">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
