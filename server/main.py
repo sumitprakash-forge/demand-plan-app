@@ -155,16 +155,20 @@ from pydantic import BaseModel as _BM
 class LoginRequest(_BM):
     host: str = DEFAULT_HOST
     pat: str
+    email: str | None = None   # required when pat == "demo"
 
 
 @app.post("/api/auth/login")
 async def login(body: LoginRequest, response: Response):
-    """Validate PAT against Databricks, issue session cookie."""
+    """Validate PAT against Databricks, issue session cookie.
+    If pat == 'demo', skip SCIM and use provided email as identity.
+    """
+    from auth import DEMO_TOKEN
     host = body.host.rstrip("/")
-    username = await asyncio.to_thread(validate_pat_get_username, host, body.pat)
+    username = await asyncio.to_thread(validate_pat_get_username, host, body.pat, body.email)
     token = create_session_token(username, host, body.pat)
     set_session_cookie(response, token)
-    return {"username": username, "host": host}
+    return {"username": username, "host": host, "demo": body.pat == DEMO_TOKEN}
 
 
 @app.get("/api/auth/me")
@@ -1210,6 +1214,44 @@ async def upload_export_to_drive(
     file_id = resp.json().get("id")
     url = f"https://drive.google.com/file/d/{file_id}/view"
     return {"url": url, "file_id": file_id}
+
+
+# ---------------------------------------------------------------------------
+# Smoke Test — upload consumption JSON to bypass Logfood
+# ---------------------------------------------------------------------------
+
+@app.post("/api/smoke-test/load")
+async def smoke_test_load(
+    account: str = Query(..., description="Account name / display name"),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Load a pre-exported consumption JSON for smoke testing without Logfood access.
+    The file must be a JSON array with the same schema as Logfood exports:
+      [{workspace_name, cloud, month, sku, total_dbus, dollar_dbu_list}, ...]
+    The account name is used as-is for all subsequent queries.
+    """
+    ud = _udir(user)
+    content = await file.read()
+    try:
+        rows = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    if not isinstance(rows, list) or len(rows) == 0:
+        raise HTTPException(status_code=400, detail="File must be a non-empty JSON array")
+
+    required_fields = {"workspace_name", "cloud", "month", "sku", "total_dbus", "dollar_dbu_list"}
+    sample = rows[0]
+    missing = required_fields - set(sample.keys())
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {missing}")
+
+    cache_key = f"{user['sub']}:{account}"
+    _consumption_cache[cache_key] = rows
+    _save_json(f"consumption_{account}", rows, ud)
+
+    return {"status": "ok", "account": account, "records": len(rows)}
 
 
 # ---------------------------------------------------------------------------

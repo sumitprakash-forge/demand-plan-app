@@ -17,18 +17,23 @@ export default function LoginPage({ onLogin }: Props) {
     });
   }, []);
   const [pat, setPat] = useState('');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const isDemo = pat.trim() === 'demo';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
+      const body: Record<string, string> = { host: host.trim(), pat: pat.trim() };
+      if (isDemo) body.email = email.trim();
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: host.trim(), pat: pat.trim() }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const msg = await res.text();
@@ -61,8 +66,16 @@ export default function LoginPage({ onLogin }: Props) {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
 
-            {/* Host — fixed, read-only */}
-            <div>
+            {/* Demo mode banner */}
+            {isDemo && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-sm text-amber-800 flex items-start gap-2">
+                <span className="text-amber-500 mt-0.5">⚠</span>
+                <span><strong>Demo mode</strong> — no Logfood access required. Use the Smoke Test tab in Setup to upload consumption data.</span>
+              </div>
+            )}
+
+            {/* Host — hidden in demo mode */}
+            {!isDemo && <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
                 Logfood Workspace URL
               </label>
@@ -93,25 +106,45 @@ export default function LoginPage({ onLogin }: Props) {
                   )}
                 </button>
               </div>
-            </div>
+            </div>}
 
             {/* PAT */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Personal Access Token
+                {isDemo ? 'Demo Token' : 'Personal Access Token'}
               </label>
               <input
                 type="password"
                 value={pat}
                 onChange={e => setPat(e.target.value)}
-                placeholder="dapi••••••••••••••••"
+                placeholder={isDemo ? 'demo' : 'dapi••••••••••••••••'}
                 required
                 className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
               />
               <p className="text-[11px] text-slate-400 mt-1.5">
-                Your identity is derived from this token. Data is isolated per user.
+                {isDemo ? 'Type "demo" to enter without Logfood credentials.' : 'Your identity is derived from this token. Data is isolated per user.'}
               </p>
             </div>
+
+            {/* Email — only shown in demo mode */}
+            {isDemo && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                  Your Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  required
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
+                />
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  Used to isolate your data from other demo users.
+                </p>
+              </div>
+            )}
 
             {/* Error */}
             {error && (
@@ -123,7 +156,7 @@ export default function LoginPage({ onLogin }: Props) {
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading || !pat.trim()}
+              disabled={loading || !pat.trim() || (isDemo && !email.trim())}
               className="w-full bg-[#FF3621] hover:bg-[#e02d1b] disabled:bg-slate-300 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (

@@ -76,6 +76,7 @@ interface Props {
 
 export default function SetupTab({ accounts, setAccounts, onLoadAccount, loadingAccounts, loadStatus }: Props) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [activeSubTab, setActiveSubTab] = useState<'accounts' | 'smoke-test'>('accounts');
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -95,15 +96,38 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
         </p>
       </div>
 
-      <DatabricksStep status={status} onDone={refreshStatus} />
-      <AccountPickerStep
-        databricksReady={status?.databricks ?? false}
-        accounts={accounts}
-        setAccounts={setAccounts}
-        onLoadAccount={onLoadAccount}
-        loadingAccounts={loadingAccounts}
-        loadStatus={loadStatus}
-      />
+      {/* Sub-tab switcher */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {(['accounts', 'smoke-test'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveSubTab(tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeSubTab === tab
+                ? 'border-[#FF3621] text-[#FF3621]'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {tab === 'accounts' ? 'Accounts' : 'Smoke Test'}
+          </button>
+        ))}
+      </div>
+
+      {activeSubTab === 'accounts' ? (
+        <>
+          <DatabricksStep status={status} onDone={refreshStatus} />
+          <AccountPickerStep
+            databricksReady={status?.databricks ?? false}
+            accounts={accounts}
+            setAccounts={setAccounts}
+            onLoadAccount={onLoadAccount}
+            loadingAccounts={loadingAccounts}
+            loadStatus={loadStatus}
+          />
+        </>
+      ) : (
+        <SmokeTestStep accounts={accounts} setAccounts={setAccounts} />
+      )}
     </div>
   );
 }
@@ -844,6 +868,143 @@ function AccountPickerStep({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Smoke Test Step ──────────────────────────────────────────────────────────
+
+function SmokeTestStep({
+  accounts,
+  setAccounts,
+}: {
+  accounts: AccountConfig[];
+  setAccounts: (a: AccountConfig[]) => void;
+}) {
+  const [accountName, setAccountName] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ records: number; account: string } | null>(null);
+  const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleLoad = async () => {
+    if (!accountName.trim() || !file) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/smoke-test/load?account=${encodeURIComponent(accountName.trim())}`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setResult(data);
+
+      // Add account to the list if not already present
+      const key = accountName.trim();
+      const exists = accounts.some(a => a.sfdc_id === key || a.name === key);
+      if (!exists) {
+        setAccounts([...accounts.filter(a => a.name.trim()), {
+          name: key,
+          sfdc_id: key,
+          contractStartDate: '',
+          contractMonths: 36,
+        }]);
+      }
+    } catch (e: any) {
+      setError(e.message || 'Upload failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800">Smoke Test</h3>
+        <p className="text-sm text-slate-500 mt-1">
+          Upload a pre-exported consumption JSON to use the app without Logfood access.
+          The file must be the same format as <code className="text-xs bg-slate-100 px-1 rounded">consumption_*.json</code> from the data directory.
+        </p>
+      </div>
+
+      {/* Account name */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+          Account Name
+        </label>
+        <input
+          type="text"
+          value={accountName}
+          onChange={e => setAccountName(e.target.value)}
+          placeholder="e.g. Kroger"
+          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
+        />
+      </div>
+
+      {/* File upload */}
+      <div>
+        <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+          Consumption JSON File
+        </label>
+        <div
+          onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-3 border-2 border-dashed border-slate-300 hover:border-[#FF3621] rounded-lg px-4 py-4 cursor-pointer transition-colors"
+        >
+          <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span className="text-sm text-slate-500">
+            {file ? <span className="text-slate-800 font-medium">{file.name}</span> : 'Click to select consumption JSON…'}
+          </span>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={e => setFile(e.target.files?.[0] ?? null)}
+        />
+        <p className="text-[11px] text-slate-400 mt-1.5">
+          Expected format: JSON array with fields <code className="bg-slate-100 px-1 rounded">workspace_name, cloud, month, sku, total_dbus, dollar_dbu_list</code>
+        </p>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* Success */}
+      {result && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2.5 text-sm text-emerald-800">
+          ✓ Loaded <strong>{result.records.toLocaleString()}</strong> records for <strong>{result.account}</strong>. Switch to any tab to explore the data.
+        </div>
+      )}
+
+      {/* Load button */}
+      <button
+        onClick={handleLoad}
+        disabled={loading || !accountName.trim() || !file}
+        className="w-full bg-[#FF3621] hover:bg-[#e02d1b] disabled:bg-slate-300 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+      >
+        {loading ? (
+          <>
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Loading…
+          </>
+        ) : 'Load Data'}
+      </button>
     </div>
   );
 }

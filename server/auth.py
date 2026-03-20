@@ -16,17 +16,24 @@ JWT_EXPIRY_SECONDS = 8 * 3600   # 8 hours
 COOKIE_NAME = "dp_session"
 
 DEFAULT_HOST = "https://adb-2548836972759138.18.azuredatabricks.net"
+DEMO_TOKEN = "demo"
 
 
 # ---------------------------------------------------------------------------
 # PAT validation
 # ---------------------------------------------------------------------------
 
-def validate_pat_get_username(host: str, pat: str) -> str:
+def validate_pat_get_username(host: str, pat: str, demo_email: str | None = None) -> str:
     """Call Databricks SCIM /Me endpoint with the PAT.
     Returns the userName (email) of the authenticated user.
+    If pat == DEMO_TOKEN, skip SCIM and return the provided demo_email.
     Raises HTTPException 401 if invalid.
     """
+    if pat == DEMO_TOKEN:
+        if not demo_email or "@" not in demo_email:
+            raise HTTPException(status_code=401, detail="A valid email is required for demo access")
+        return demo_email.strip().lower()
+
     host = host.rstrip("/")
     try:
         r = _req.get(
