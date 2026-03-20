@@ -489,9 +489,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
       id: generateId(),
       label: 'Development Phase',
       months: [],
-      skuAmounts: uc.skuBreakdown.length > 0
-        ? uc.skuBreakdown.map(s => ({ sku: s.sku === '__custom__' ? (s.sku) : s.sku, dollarPerMonth: 0 }))
-        : [{ sku: 'Total', dollarPerMonth: 0 }],
+      skuAmounts: [],
     };
     updateUC(ucId, { adhocPeriods: [...(uc.adhocPeriods || []), newPeriod] });
   };
@@ -521,12 +519,33 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     updateAdhocPeriod(ucId, periodId, { months });
   };
 
-  const updateAdhocSkuAmount = (ucId: string, periodId: string, sku: string, dollarPerMonth: number) => {
+  const addAdhocSkuRow = (ucId: string, periodId: string) => {
     const uc = newUseCases.find(u => u.id === ucId);
     if (!uc) return;
     const period = (uc.adhocPeriods || []).find(p => p.id === periodId);
     if (!period) return;
-    const skuAmounts = period.skuAmounts.map(sa => sa.sku === sku ? { ...sa, dollarPerMonth } : sa);
+    const defaultSku = availableSkuNames[0] || 'Jobs Compute';
+    updateAdhocPeriod(ucId, periodId, {
+      skuAmounts: [...period.skuAmounts, { sku: defaultSku, dollarPerMonth: 0 }],
+    });
+  };
+
+  const removeAdhocSkuRow = (ucId: string, periodId: string, rowIdx: number) => {
+    const uc = newUseCases.find(u => u.id === ucId);
+    if (!uc) return;
+    const period = (uc.adhocPeriods || []).find(p => p.id === periodId);
+    if (!period) return;
+    updateAdhocPeriod(ucId, periodId, {
+      skuAmounts: period.skuAmounts.filter((_, i) => i !== rowIdx),
+    });
+  };
+
+  const updateAdhocSkuRow = (ucId: string, periodId: string, rowIdx: number, field: 'sku' | 'dollarPerMonth', value: string | number) => {
+    const uc = newUseCases.find(u => u.id === ucId);
+    if (!uc) return;
+    const period = (uc.adhocPeriods || []).find(p => p.id === periodId);
+    if (!period) return;
+    const skuAmounts = period.skuAmounts.map((sa, i) => i === rowIdx ? { ...sa, [field]: value } : sa);
     updateAdhocPeriod(ucId, periodId, { skuAmounts });
   };
 
@@ -1303,28 +1322,57 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                                     </div>
                                   </div>
                                   {/* Per-SKU amounts */}
-                                  {period.months.length > 0 && (
-                                    <div>
-                                      <div className="text-[10px] font-medium text-gray-500 mb-1">Additional $/month per SKU for selected months:</div>
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[10px] font-medium text-gray-500">Additional $/month per SKU{period.months.length > 0 ? ` (applied to ${period.months.length} selected month${period.months.length !== 1 ? 's' : ''})` : ''}:</span>
+                                      <button onClick={() => addAdhocSkuRow(uc.id, period.id)}
+                                        className="flex items-center gap-0.5 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded px-1.5 py-0.5 hover:bg-indigo-50">
+                                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                        Add SKU
+                                      </button>
+                                    </div>
+                                    {period.skuAmounts.length === 0 ? (
+                                      <div className="text-[10px] text-gray-400 italic py-1">No SKUs added. Click "Add SKU" to specify additional usage per SKU.</div>
+                                    ) : (
                                       <div className="space-y-1">
-                                        {period.skuAmounts.map((sa) => (
-                                          <div key={sa.sku} className="flex items-center gap-2">
-                                            <span className="text-[11px] text-gray-600 w-40 truncate">{sa.sku}</span>
-                                            <span className="text-gray-400 text-xs">$</span>
+                                        {period.skuAmounts.map((sa, saIdx) => (
+                                          <div key={saIdx} className="flex items-center gap-2">
+                                            <select
+                                              value={sa.sku}
+                                              onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'sku', e.target.value)}
+                                              className="flex-1 border border-indigo-200 rounded px-1.5 py-0.5 text-xs bg-white min-w-0">
+                                              {(availableSkuNames.length > 0
+                                                ? availableSkuNames
+                                                : ['All Purpose Compute', 'Jobs Compute', 'Serverless SQL', 'DLT Core', 'Model Serving', 'Foundation Model API', 'Vector Search']
+                                              ).map(name => <option key={name} value={name}>{name}</option>)}
+                                            </select>
+                                            <span className="text-gray-400 text-xs flex-shrink-0">$</span>
                                             <input
                                               type="number" min={0}
                                               value={sa.dollarPerMonth || ''}
                                               placeholder="0"
-                                              onChange={(e) => updateAdhocSkuAmount(uc.id, period.id, sa.sku, parseFloat(e.target.value) || 0)}
-                                              className="w-24 border border-indigo-200 rounded px-1.5 py-0.5 text-xs text-right"
+                                              onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'dollarPerMonth', parseFloat(e.target.value) || 0)}
+                                              className="w-24 flex-shrink-0 border border-indigo-200 rounded px-1.5 py-0.5 text-xs text-right"
                                             />
-                                            <span className="text-[10px] text-gray-400">/month</span>
-                                            {sa.dollarPerMonth > 0 && <span className="text-[10px] text-indigo-500">= {formatCurrency(sa.dollarPerMonth * period.months.length)} over {period.months.length}mo</span>}
+                                            <span className="text-[10px] text-gray-400 flex-shrink-0">/mo</span>
+                                            {sa.dollarPerMonth > 0 && period.months.length > 0 && (
+                                              <span className="text-[10px] text-indigo-500 flex-shrink-0">= {formatCurrency(sa.dollarPerMonth * period.months.length)} total</span>
+                                            )}
+                                            <button onClick={() => removeAdhocSkuRow(uc.id, period.id, saIdx)}
+                                              className="text-red-300 hover:text-red-500 flex-shrink-0 text-[10px]">✕</button>
                                           </div>
                                         ))}
+                                        {period.skuAmounts.length > 1 && (
+                                          <div className="flex items-center justify-end gap-2 pt-1 border-t border-indigo-100">
+                                            <span className="text-[10px] text-indigo-600 font-medium">
+                                              Total: {formatCurrency(periodTotal)}/mo
+                                              {period.months.length > 0 && ` = ${formatCurrency(periodTotal * period.months.length)} over ${period.months.length}mo`}
+                                            </span>
+                                          </div>
+                                        )}
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
