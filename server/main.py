@@ -168,6 +168,11 @@ def _safe_name(name: str) -> str:
     return name
 
 
+def _norm_account(account: str) -> str:
+    """Normalise account name to lowercase for case-insensitive lookups."""
+    return account.strip().lower()
+
+
 def _get_mapping(account: str, ud: Path) -> list[dict]:
     """Load the per-account workspace→domain mapping from the user's data dir."""
     return _load_json(f"domain_mapping_{_safe_name(account)}", ud) or []
@@ -248,6 +253,7 @@ async def upload_domain_map(
     user: dict = Depends(get_current_user),
 ):
     """Upload a CSV (workspace_name,domain) and store it for this account."""
+    account_name = _norm_account(account_name)
     content = await file.read()
     try:
         text = content.decode("utf-8-sig")   # handle Excel BOM
@@ -284,6 +290,7 @@ async def get_domain_map(
     user: dict = Depends(get_current_user),
 ):
     """Return the stored domain mapping for an account."""
+    account_name = _norm_account(account_name)
     rows = _get_mapping(account_name, _udir(user))
     return {"mapping": rows, "count": len(rows)}
 
@@ -294,6 +301,7 @@ async def get_account_workspaces(
     user: dict = Depends(get_current_user),
 ):
     """Return unique workspace names seen in consumption data — used to seed the CSV template."""
+    account_name = _norm_account(account_name)
     ud = _udir(user)
     ck = f"{user['sub']}:{account_name}"
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account_name}", ud) or []
@@ -312,6 +320,7 @@ async def get_consumption(
     user: dict = Depends(get_current_user),
 ):
     """Query Logfood for trailing 12 months consumption. Uses cache by default."""
+    account = _norm_account(account)
     ud = _udir(user)
     cache_key = f"{user['sub']}:{account}"
 
@@ -348,6 +357,7 @@ async def upload_consumption(
     user: dict = Depends(get_current_user),
 ):
     """Upload CSV as fallback for consumption data."""
+    account = _norm_account(account)
     ud = _udir(user)
     content = await file.read()
     text = content.decode("utf-8")
@@ -378,6 +388,7 @@ async def get_sku_prices(
     user: dict = Depends(get_current_user),
 ):
     """Get distinct SKU + cloud + list_price from Logfood."""
+    account = _norm_account(account)
     ud = _udir(user)
     cache_key = f"{user['sub']}:{account}"
     if cache_key in _sku_price_cache:
@@ -469,6 +480,7 @@ async def get_summary(
     user: dict = Depends(get_current_user),
 ):
     """Return demand plan summary — pulls projections from saved scenario config."""
+    account = _norm_account(account)
     ud = _udir(user)
     ck = f"{user['sub']}:{account}"
     consumption = _consumption_cache.get(ck)
@@ -648,6 +660,7 @@ async def get_consumption_forecast(
     Months are calendar months starting from start_date (YYYY-MM) if provided,
     otherwise from next month.
     """
+    account = _norm_account(account)
     from datetime import date, timedelta
     import calendar
 
@@ -772,6 +785,7 @@ async def get_summary_all(
     user: dict = Depends(get_current_user),
 ):
     """Return summary for all 3 scenarios (fetched in parallel)."""
+    account = _norm_account(account)
     results = await asyncio.gather(
         get_summary(account, 1, contract_months, user),
         get_summary(account, 2, contract_months, user),
@@ -787,6 +801,7 @@ async def get_summary_all(
 @app.post("/api/scenario")
 async def save_scenario(data: ScenarioAssumptions, user: dict = Depends(get_current_user)):
     """Save scenario assumptions with optimistic locking."""
+    data.account = _norm_account(data.account)
     ud = _udir(user)
     key = f"{data.account}_{data.scenario_id}"
     ukey = f"{user['sub']}:{key}"
@@ -813,6 +828,7 @@ async def get_scenario(
     user: dict = Depends(get_current_user),
 ):
     """Get scenario assumptions."""
+    account = _norm_account(account)
     ud = _udir(user)
     key = f"{account}_{scenario}"
     ukey = f"{user['sub']}:{key}"
@@ -840,6 +856,7 @@ async def get_scenario(
 @app.post("/api/forecast")
 async def save_forecast(data: ForecastUpdate, user: dict = Depends(get_current_user)):
     """Save/update forecast overrides."""
+    data.account = _norm_account(data.account)
     ud = _udir(user)
     fk = f"{user['sub']}:{data.account}"
     _forecast_overrides[fk] = [o.model_dump() for o in data.overrides]
@@ -853,6 +870,7 @@ async def get_forecast(
     user: dict = Depends(get_current_user),
 ):
     """Get workspace-level forecast data."""
+    account = _norm_account(account)
     ud = _udir(user)
     ck = f"{user['sub']}:{account}"
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
@@ -925,6 +943,7 @@ async def get_account_overview(
     user: dict = Depends(get_current_user),
 ):
     """High-level account metrics."""
+    account = _norm_account(account)
     ud = _udir(user)
     ck = f"{user['sub']}:{account}"
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
@@ -1027,6 +1046,7 @@ async def get_contract_health(
     Fetch contract burn curve data from main.gtm_gold.commit_consumption_cpq_monthly.
     Returns monthly rows aggregated by opportunity, plus a derived summary.
     """
+    account = _norm_account(account)
     if not account:
         return {"account": account, "opportunities": [], "summary": None}
 
@@ -1301,6 +1321,7 @@ async def smoke_test_load(
       [{workspace_name, cloud, month, sku, total_dbus, dollar_dbu_list}, ...]
     The account name is used as-is for all subsequent queries.
     """
+    account = _norm_account(account)
     ud = _udir(user)
     content = await file.read()
     try:
