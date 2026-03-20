@@ -70,7 +70,7 @@ function loadSavedAccounts(): AccountConfig[] {
 
 export default function App() {
   const [authState, setAuthState] = useState<'checking' | 'unauthenticated' | 'authenticated'>('checking');
-  const [currentUser, setCurrentUser] = useState<{ username: string; host: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ username: string; host: string; demo?: boolean } | null>(null);
 
   // Check session on mount
   useEffect(() => {
@@ -80,8 +80,8 @@ export default function App() {
       .catch(() => setAuthState('unauthenticated'));
   }, []);
 
-  const handleLogin = (username: string, host: string) => {
-    setCurrentUser({ username, host });
+  const handleLogin = (username: string, host: string, demo?: boolean) => {
+    setCurrentUser({ username, host, demo });
     setAuthState('authenticated');
   };
 
@@ -105,7 +105,7 @@ export default function App() {
   return <AppShell currentUser={currentUser!} onLogout={handleLogout} />;
 }
 
-function AppShell({ currentUser, onLogout }: { currentUser: { username: string; host: string }; onLogout: () => void }) {
+function AppShell({ currentUser, onLogout }: { currentUser: { username: string; host: string; demo?: boolean }; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState('setup');
   const [accounts, setAccounts] = useState<AccountConfig[]>(loadSavedAccounts);
   const [exporting, setExporting] = useState(false);
@@ -408,7 +408,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
 
       {/* Tab Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'setup' && <SetupTab accounts={accounts} setAccounts={setAccounts} onLoadAccount={handleLoadAccount} loadingAccounts={loadingAccounts} loadStatus={loadStatus} />}
+        {activeTab === 'setup' && <SetupTab accounts={accounts} setAccounts={setAccounts} onLoadAccount={handleLoadAccount} loadingAccounts={loadingAccounts} loadStatus={loadStatus} isDemo={currentUser.demo ?? false} />}
         {activeTab === 'summary' && <SummaryTab accounts={accounts} setAccounts={setAccounts} />}
         {activeTab === 'historical' && <HistoricalTab accounts={accounts} />}
         {activeTab === 'scenario' && <ScenarioTab accounts={accounts} />}

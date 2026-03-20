@@ -70,13 +70,14 @@ interface Props {
   onLoadAccount: (acct: AccountConfig) => Promise<void>;
   loadingAccounts: Record<string, boolean>;
   loadStatus: Record<string, 'ok' | 'error'>;
+  isDemo?: boolean;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function SetupTab({ accounts, setAccounts, onLoadAccount, loadingAccounts, loadStatus }: Props) {
+export default function SetupTab({ accounts, setAccounts, onLoadAccount, loadingAccounts, loadStatus, isDemo = false }: Props) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'accounts' | 'smoke-test'>('accounts');
+  const [activeSubTab, setActiveSubTab] = useState<'accounts' | 'smoke-test'>(isDemo ? 'smoke-test' : 'accounts');
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -96,22 +97,24 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
         </p>
       </div>
 
-      {/* Sub-tab switcher */}
-      <div className="flex gap-1 border-b border-slate-200">
-        {(['accounts', 'smoke-test'] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveSubTab(tab)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeSubTab === tab
-                ? 'border-[#FF3621] text-[#FF3621]'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {tab === 'accounts' ? 'Accounts' : 'Smoke Test'}
-          </button>
-        ))}
-      </div>
+      {/* Sub-tab switcher — show both tabs only when not in demo mode */}
+      {!isDemo && (
+        <div className="flex gap-1 border-b border-slate-200">
+          {(['accounts', 'smoke-test'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveSubTab(tab)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeSubTab === tab
+                  ? 'border-[#FF3621] text-[#FF3621]'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab === 'accounts' ? 'Accounts' : 'Smoke Test'}
+            </button>
+          ))}
+        </div>
+      )}
 
       {activeSubTab === 'accounts' ? (
         <>
@@ -1005,6 +1008,20 @@ function SmokeTestStep({
           </>
         ) : 'Load Data'}
       </button>
+
+      {/* Domain map upload — shown after successful data load */}
+      {result && (
+        <div className="border-t border-slate-200 pt-5">
+          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">
+            Domain Mapping (Optional)
+          </p>
+          <p className="text-sm text-slate-500 mb-3">
+            Upload a CSV to group workspaces into business domains (e.g. Supply Chain, Merchandising).
+            Required for domain-level views in Historical and Account Overview tabs.
+          </p>
+          <DomainMapUpload account={result.account} />
+        </div>
+      )}
     </div>
   );
 }

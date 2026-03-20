@@ -174,7 +174,8 @@ async def login(body: LoginRequest, response: Response):
 @app.get("/api/auth/me")
 async def auth_me(user: dict = Depends(get_current_user)):
     """Return current user info (used by frontend to check session)."""
-    return {"username": user["sub"], "host": user["host"]}
+    from auth import DEMO_TOKEN
+    return {"username": user["sub"], "host": user["host"], "demo": user.get("pat") == DEMO_TOKEN}
 
 
 @app.post("/api/auth/logout")

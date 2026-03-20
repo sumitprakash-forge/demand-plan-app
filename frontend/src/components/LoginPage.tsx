@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 const DEFAULT_HOST = 'https://adb-2548836972759138.18.azuredatabricks.net';
 
 interface Props {
-  onLogin: (username: string, host: string) => void;
+  onLogin: (username: string, host: string, demo?: boolean) => void;
 }
 
 export default function LoginPage({ onLogin }: Props) {
@@ -40,7 +40,7 @@ export default function LoginPage({ onLogin }: Props) {
         throw new Error(msg || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      onLogin(data.username, data.host);
+      onLogin(data.username, data.host, data.demo ?? false);
     } catch (e: any) {
       setError(e.message || 'Sign in failed');
     } finally {
