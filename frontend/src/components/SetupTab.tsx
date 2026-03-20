@@ -936,8 +936,37 @@ function SmokeTestStep({
         <h3 className="text-base font-semibold text-slate-800">Smoke Test</h3>
         <p className="text-sm text-slate-500 mt-1">
           Upload a pre-exported consumption JSON to use the app without Logfood access.
-          The file must be the same format as <code className="text-xs bg-slate-100 px-1 rounded">consumption_*.json</code> from the data directory.
         </p>
+      </div>
+
+      {/* Sample file downloads */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 space-y-2">
+        <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Sample Files (Kroger)</p>
+        <div className="flex flex-col gap-1.5">
+          <a
+            href="https://drive.google.com/file/d/1ikwIAiDdMCXySHcR4r1_HOXOa0EKR_Er/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 hover:underline"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download sample consumption file (Kroger T12M from Logfood)
+          </a>
+          <a
+            href="https://drive.google.com/file/d/1r7WCXz9cDWy2CQl3KH-d3E8kJ73U9vkP/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 hover:underline"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download sample domain map CSV (Kroger workspace → domain mapping)
+          </a>
+        </div>
+        <p className="text-[11px] text-blue-600">Download both files, then upload below. Use <strong>Kroger</strong> as the account name.</p>
       </div>
 
       {/* Account name */}
