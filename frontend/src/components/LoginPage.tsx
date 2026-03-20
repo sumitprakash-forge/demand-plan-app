@@ -53,19 +53,14 @@ export default function LoginPage({ onLogin }: Props) {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
 
-            {/* Host */}
+            {/* Host — fixed, read-only */}
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
-                Databricks Workspace URL
+                Logfood Workspace URL
               </label>
-              <input
-                type="url"
-                value={host}
-                onChange={e => setHost(e.target.value)}
-                placeholder="https://adb-xxx.azuredatabricks.net"
-                required
-                className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
-              />
+              <div className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-500 bg-slate-50 font-mono truncate select-none">
+                {DEFAULT_HOST}
+              </div>
             </div>
 
             {/* PAT */}
