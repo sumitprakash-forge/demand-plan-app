@@ -885,6 +885,8 @@ function SmokeTestStep({
   setAccounts: (a: AccountConfig[]) => void;
 }) {
   const [accountName, setAccountName] = useState('');
+  const [contractStartDate, setContractStartDate] = useState('');
+  const [contractMonths, setContractMonths] = useState(36);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ records: number; account: string } | null>(null);
@@ -910,16 +912,16 @@ function SmokeTestStep({
       const data = await res.json();
       setResult(data);
 
-      // Add account to the list if not already present
+      // Add/update account in the list with contract details
       const key = accountName.trim();
-      const exists = accounts.some(a => a.sfdc_id === key || a.name === key);
-      if (!exists) {
-        setAccounts([...accounts.filter(a => a.name.trim()), {
-          name: key,
-          sfdc_id: key,
-          contractStartDate: '',
-          contractMonths: 36,
-        }]);
+      const existingIdx = accounts.findIndex(a => a.sfdc_id === key || a.name === key);
+      const newAcct = { name: key, sfdc_id: key, contractStartDate, contractMonths };
+      if (existingIdx >= 0) {
+        const updated = [...accounts];
+        updated[existingIdx] = newAcct;
+        setAccounts(updated);
+      } else {
+        setAccounts([...accounts.filter(a => a.name.trim()), newAcct]);
       }
     } catch (e: any) {
       setError(e.message || 'Upload failed');
@@ -950,6 +952,35 @@ function SmokeTestStep({
           placeholder="e.g. Kroger"
           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
         />
+      </div>
+
+      {/* Contract start date + term */}
+      <div className="flex items-end gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+            Contract Start (M1)
+          </label>
+          <input
+            type="month"
+            value={contractStartDate}
+            onChange={e => setContractStartDate(e.target.value)}
+            className="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+            Contract Term
+          </label>
+          <select
+            value={contractMonths}
+            onChange={e => setContractMonths(Number(e.target.value))}
+            className="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF3621]/30 focus:border-[#FF3621] transition"
+          >
+            <option value={12}>1 Year</option>
+            <option value={36}>3 Years</option>
+            <option value={60}>5 Years</option>
+          </select>
+        </div>
       </div>
 
       {/* File upload */}
