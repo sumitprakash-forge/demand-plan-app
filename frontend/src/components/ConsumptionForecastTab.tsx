@@ -185,10 +185,13 @@ function ForecastDomainCharts({
   months: number;
 }) {
   const [viewMode, setViewMode] = useState<'yearly' | 'monthly'>('yearly');
+  const [metricMode, setMetricMode] = useState<'dollar' | 'dbu'>('dollar');
   const chartRef = useRef<HTMLDivElement>(null);
 
-  // Build domain → monthly values across all accounts
-  const domainMonthly: Record<string, number[]> = {};
+  const DBU_RATE = 1 / 0.20; // default $0.20/DBU blended
+
+  // Build use case label → monthly values (Baseline as its own series)
+  const ucMonthly: Record<string, number[]> = {};
   const monthLabels: string[] = [];
 
   activeAccounts.forEach(acc => {
@@ -196,45 +199,68 @@ function ForecastDomainCharts({
     if (!fd) return;
     if (!monthLabels.length) fd.month_labels.slice(0, months).forEach(l => monthLabels.push(l));
     fd.rows.forEach(row => {
-      const domain = row.domain || (row.type === 'baseline' ? 'Baseline' : 'Other');
-      if (!domainMonthly[domain]) domainMonthly[domain] = new Array(months).fill(0);
-      row.values.slice(0, months).forEach((v, i) => { domainMonthly[domain][i] += v; });
+      const label = row.type === 'baseline' ? 'Baseline' : (row.label || 'Other');
+      if (!ucMonthly[label]) ucMonthly[label] = new Array(months).fill(0);
+      row.values.slice(0, months).forEach((v, i) => {
+        ucMonthly[label][i] += metricMode === 'dbu' ? v * DBU_RATE : v;
+      });
     });
   });
 
-  const domains = Object.keys(domainMonthly).sort(
-    (a, b) => domainMonthly[b].reduce((s, v) => s + v, 0) - domainMonthly[a].reduce((s, v) => s + v, 0)
-  );
+  // Baseline first, then sorted by total descending
+  const labels = Object.keys(ucMonthly).sort((a, b) => {
+    if (a === 'Baseline') return -1;
+    if (b === 'Baseline') return 1;
+    return ucMonthly[b].reduce((s, v) => s + v, 0) - ucMonthly[a].reduce((s, v) => s + v, 0);
+  });
 
-  // Yearly chart data
-  const yearlyData = ['Year 1', 'Year 2', 'Year 3'].map((yr, yi) => {
-    const entry: Record<string, any> = { period: yr };
-    domains.forEach(d => {
-      entry[d] = Math.round(domainMonthly[d].slice(yi * 12, (yi + 1) * 12).reduce((s, v) => s + v, 0));
+  // Only show years that have data based on `months`
+  const numYears = Math.min(3, Math.ceil(months / 12));
+
+  const yearlyData = Array.from({ length: numYears }, (_, yi) => {
+    const entry: Record<string, any> = { period: `Year ${yi + 1}` };
+    labels.forEach(l => {
+      entry[l] = Math.round(ucMonthly[l].slice(yi * 12, (yi + 1) * 12).reduce((s, v) => s + v, 0));
     });
     return entry;
   });
 
-  // Monthly chart data
   const monthlyData = monthLabels.map((label, i) => {
     const entry: Record<string, any> = { period: label };
-    domains.forEach(d => { entry[d] = Math.round(domainMonthly[d][i] || 0); });
+    labels.forEach(l => { entry[l] = Math.round(ucMonthly[l][i] || 0); });
     return entry;
   });
 
   const chartData = viewMode === 'yearly' ? yearlyData : monthlyData;
   const scenarioLabel = `S${activeScenario}`;
 
+  const fmtVal = (v: number) => metricMode === 'dbu' ? `${formatDbu(v)} DBUs` : formatCurrency(v);
+  const yTickFmt = (v: number) => metricMode === 'dbu' ? formatDbu(v) : formatCurrency(v);
+
   return (
     <div className="bg-white rounded-lg shadow p-4">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-800">
-            {scenarioLabel} — Forecast by Domain
+            {scenarioLabel} — Forecast by Use Case
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">All accounts combined · {months}-month projection</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* $DBU / DBU toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+            {(['dollar', 'dbu'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMetricMode(m)}
+                className={`px-3 py-1.5 font-medium transition-colors ${
+                  metricMode === m ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {m === 'dollar' ? '$DBU' : 'DBU'}
+              </button>
+            ))}
+          </div>
           {/* Yearly / Monthly toggle */}
           <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
             {(['yearly', 'monthly'] as const).map(m => (
@@ -251,7 +277,7 @@ function ForecastDomainCharts({
           </div>
           {/* Download */}
           <button
-            onClick={() => downloadChartAsPng(chartRef, `S${activeScenario}_forecast_by_domain_${viewMode}.png`)}
+            onClick={() => downloadChartAsPng(chartRef, `S${activeScenario}_forecast_${viewMode}_${metricMode}.png`)}
             className="flex items-center gap-1 px-2 py-1.5 text-xs text-slate-500 hover:text-slate-800 border border-slate-200 rounded hover:bg-slate-50 transition-colors"
             title="Download chart as PNG"
           >
@@ -263,7 +289,7 @@ function ForecastDomainCharts({
         </div>
       </div>
       <div ref={chartRef}>
-        <ResponsiveContainer width="100%" height={320}>
+        <ResponsiveContainer width="100%" height={340}>
           <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: viewMode === 'monthly' ? 20 : 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
             <XAxis
@@ -273,11 +299,11 @@ function ForecastDomainCharts({
               textAnchor={viewMode === 'monthly' ? 'end' : 'middle'}
               interval={viewMode === 'monthly' ? Math.floor(months / 12) : 0}
             />
-            <YAxis tickFormatter={(v: number) => formatCurrency(v)} tick={{ fontSize: 10 }} width={78} />
-            <Tooltip formatter={(v: number) => formatCurrency(v)} />
+            <YAxis tickFormatter={yTickFmt} tick={{ fontSize: 10 }} width={80} />
+            <Tooltip formatter={(v: number, name: string) => [fmtVal(v), name]} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
-            {domains.map((d, i) => (
-              <Bar key={d} dataKey={d} stackId="a" fill={CHART_COLORS[i % CHART_COLORS.length]} />
+            {labels.map((l, i) => (
+              <Bar key={l} dataKey={l} stackId="a" fill={CHART_COLORS[i % CHART_COLORS.length]} />
             ))}
           </BarChart>
         </ResponsiveContainer>
