@@ -458,12 +458,6 @@ def _calc_use_case_monthly(uc: dict, total_months: int = 36) -> list[float]:
         else:
             progress = (m - om + 1) / (ramp_months + 1)
             result[i] = ss * progress if ramp == "linear" else ss * (progress ** 2.5)
-        # Add adhoc usage for selected months (development phase bursts)
-        for period in adhoc_periods:
-            months_list = period.get("months") or []
-            if m in months_list:
-                sku_amounts = period.get("skuAmounts") or period.get("sku_amounts") or []
-                result[i] += sum(sa.get("dollarPerMonth") or sa.get("dollar_per_month") or 0 for sa in sku_amounts)
     return result
 
 
@@ -550,6 +544,18 @@ async def get_summary(
             if i // 12 < num_years:
                 yt[i // 12] += v
                 uc_year_totals[i // 12] += v
+        # Add adhoc amounts (no longer baked into _calc_use_case_monthly)
+        for period in (uc.get("adhocPeriods") or uc.get("adhoc_periods") or []):
+            for m in (period.get("months") or []):
+                if isinstance(m, int) and 1 <= m <= contract_months:
+                    adhoc_total = sum(
+                        sa.get("dollarPerMonth") or sa.get("dollar_per_month") or 0
+                        for sa in (period.get("skuAmounts") or period.get("sku_amounts") or [])
+                    )
+                    yr = (m - 1) // 12
+                    if yr < num_years:
+                        yt[yr] += adhoc_total
+                        uc_year_totals[yr] += adhoc_total
         row: dict = {
             "use_case_area": f"  ↳ {uc.get('name', 'Unnamed')}",
             "total": round(sum(yt)),
@@ -737,8 +743,17 @@ async def get_consumption_forecast(
             "adhoc_periods": uc.get("adhocPeriods") or uc.get("adhoc_periods") or [],
         })
 
-    # Total row
+    # Total row — sum ramp rows + adhoc amounts (adhoc displayed as sub-rows, not in uc_values)
     totals = [sum(row["values"][i] for row in rows) for i in range(months)]
+    for uc in active_ucs:
+        for period in (uc.get("adhocPeriods") or uc.get("adhoc_periods") or []):
+            for m in (period.get("months") or []):
+                if isinstance(m, int) and 1 <= m <= months:
+                    adhoc_total = sum(
+                        sa.get("dollarPerMonth") or sa.get("dollar_per_month") or 0
+                        for sa in (period.get("skuAmounts") or period.get("sku_amounts") or [])
+                    )
+                    totals[m - 1] += adhoc_total
 
     return {
         "account": account,
