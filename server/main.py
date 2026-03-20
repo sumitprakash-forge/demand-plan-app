@@ -10,7 +10,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -18,6 +18,11 @@ from models import ScenarioAssumptions, ForecastUpdate
 from sheets import fetch_domain_mapping
 from logfood import query_consumption, query_sku_prices, query_contract_health
 from sku_mapping import get_friendly_name
+from auth import (
+    create_session_token, get_current_user, get_user_data_dir,
+    set_session_cookie, clear_session_cookie, validate_pat_get_username,
+    DEFAULT_HOST,
+)
 
 app = FastAPI(title="Demand Plan App")
 
@@ -88,18 +93,78 @@ def _preload_caches():
 _preload_caches()
 
 
-def _load_json(name: str) -> dict | list | None:
-    p = DATA_DIR / f"{name}.json"
+def _load_json(name: str, user_dir: Path | None = None) -> dict | list | None:
+    base = user_dir if user_dir else DATA_DIR
+    p = base / f"{name}.json"
     if p.exists():
         return json.loads(p.read_text())
     return None
 
 
-def _save_json(name: str, data):
-    (DATA_DIR / f"{name}.json").write_text(json.dumps(data, default=str, indent=2))
+def _save_json(name: str, data, user_dir: Path | None = None):
+    base = user_dir if user_dir else DATA_DIR
+    tmp = base / f"{name}.json.tmp"
+    tmp.write_text(json.dumps(data, default=str, indent=2))
+    tmp.replace(base / f"{name}.json")  # atomic
+
+
+def _udir(user: dict) -> Path:
+    """Shorthand: return per-user data directory from JWT user dict."""
+    return get_user_data_dir(user["sub"], DATA_DIR)
+
+
+def _ucfg(user: dict) -> dict:
+    """Load per-user config (warehouse_id etc.)."""
+    cfg = _load_json("config", _udir(user))
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _host(user: dict) -> str:
+    return user.get("host", "")
+
+
+def _token(user: dict) -> str:
+    return user.get("pat", "")
+
+
+def _warehouse(user: dict) -> str:
+    return _ucfg(user).get("warehouse_id", "")
 
 
 _load_config()
+
+
+# ---------------------------------------------------------------------------
+# Auth endpoints  (public — no session required)
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BM
+
+class LoginRequest(_BM):
+    host: str = DEFAULT_HOST
+    pat: str
+
+
+@app.post("/api/auth/login")
+async def login(body: LoginRequest, response: Response):
+    """Validate PAT against Databricks, issue session cookie."""
+    host = body.host.rstrip("/")
+    username = await asyncio.to_thread(validate_pat_get_username, host, body.pat)
+    token = create_session_token(username, host, body.pat)
+    set_session_cookie(response, token)
+    return {"username": username, "host": host}
+
+
+@app.get("/api/auth/me")
+async def auth_me(user: dict = Depends(get_current_user)):
+    """Return current user info (used by frontend to check session)."""
+    return {"username": user["sub"], "host": user["host"]}
+
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    clear_session_cookie(response)
+    return {"status": "logged out"}
 
 
 # ---------------------------------------------------------------------------
@@ -130,44 +195,49 @@ async def get_domain_mapping(sheet_url: str = Query(...)):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/consumption")
-async def get_consumption(account: str = Query(default="Walmart"), refresh: bool = Query(default=False)):
+async def get_consumption(
+    account: str = Query(default="Walmart"),
+    refresh: bool = Query(default=False),
+    user: dict = Depends(get_current_user),
+):
     """Query Logfood for trailing 12 months consumption. Uses cache by default."""
-    # 1. In-memory cache (fastest)
-    if account in _consumption_cache and not refresh:
-        return {"data": _consumption_cache[account]}
+    ud = _udir(user)
+    cache_key = f"{user['sub']}:{account}"
 
-    # 2. JSON file cache (survives restart)
+    if cache_key in _consumption_cache and not refresh:
+        return {"data": _consumption_cache[cache_key]}
+
     if not refresh:
-        cached = _load_json(f"consumption_{account}")
+        cached = _load_json(f"consumption_{account}", ud)
         if cached:
-            _consumption_cache[account] = cached
+            _consumption_cache[cache_key] = cached
             return {"data": cached, "source": "cached"}
 
-    # 3. Query Logfood async (slow, only when no cache or refresh=true)
     try:
         loop = asyncio.get_event_loop()
         rows = await loop.run_in_executor(
             _executor,
-            lambda: query_consumption(account, host=_config.get("host",""), token=_config.get("token",""), warehouse_id=_config.get("warehouse_id","")),
+            lambda: query_consumption(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user)),
         )
-        _consumption_cache[account] = rows
-        _save_json(f"consumption_{account}", rows)
+        _consumption_cache[cache_key] = rows
+        _save_json(f"consumption_{account}", rows, ud)
         return {"data": rows, "source": "logfood"}
     except Exception as e:
-        # Final fallback to JSON file
-        cached = _load_json(f"consumption_{account}")
+        cached = _load_json(f"consumption_{account}", ud)
         if cached:
-            _consumption_cache[account] = cached
+            _consumption_cache[cache_key] = cached
             return {"data": cached, "warning": f"Using cached data. Error: {str(e)}"}
-        raise HTTPException(
-            status_code=500,
-            detail=f"Logfood query failed: {str(e)}. Use CSV upload as fallback.",
-        )
+        raise HTTPException(status_code=500, detail=f"Logfood query failed: {str(e)}. Use CSV upload as fallback.")
 
 
 @app.post("/api/consumption/upload")
-async def upload_consumption(account: str = Query(default="Walmart"), file: UploadFile = File(...)):
+async def upload_consumption(
+    account: str = Query(default="Walmart"),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
     """Upload CSV as fallback for consumption data."""
+    ud = _udir(user)
     content = await file.read()
     text = content.decode("utf-8")
     reader = csv.DictReader(io.StringIO(text))
@@ -182,8 +252,8 @@ async def upload_consumption(account: str = Query(default="Walmart"), file: Uplo
                 parsed[k] = v
         rows.append(parsed)
 
-    _consumption_cache[account] = rows
-    _save_json(f"consumption_{account}", rows)
+    _consumption_cache[f"{user['sub']}:{account}"] = rows
+    _save_json(f"consumption_{account}", rows, ud)
     return {"data": rows, "count": len(rows)}
 
 
@@ -192,26 +262,27 @@ async def upload_consumption(account: str = Query(default="Walmart"), file: Uplo
 # ---------------------------------------------------------------------------
 
 @app.get("/api/sku-prices")
-async def get_sku_prices(account: str = Query(default="Walmart")):
+async def get_sku_prices(
+    account: str = Query(default="Walmart"),
+    user: dict = Depends(get_current_user),
+):
     """Get distinct SKU + cloud + list_price from Logfood."""
-    if account in _sku_price_cache:
-        raw_rows = _sku_price_cache[account]
+    ud = _udir(user)
+    cache_key = f"{user['sub']}:{account}"
+    if cache_key in _sku_price_cache:
+        raw_rows = _sku_price_cache[cache_key]
     else:
-        # Check JSON file cache first (fast)
-        cached = _load_json(f"sku_prices_{account}")
+        cached = _load_json(f"sku_prices_{account}", ud)
         if cached:
             raw_rows = cached
-            _sku_price_cache[account] = raw_rows
+            _sku_price_cache[cache_key] = raw_rows
         else:
             try:
-                raw_rows = query_sku_prices(account, host=_config.get("host",""), token=_config.get("token",""), warehouse_id=_config.get("warehouse_id",""))
-                _sku_price_cache[account] = raw_rows
-                _save_json(f"sku_prices_{account}", raw_rows)
+                raw_rows = query_sku_prices(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user))
+                _sku_price_cache[cache_key] = raw_rows
+                _save_json(f"sku_prices_{account}", raw_rows, ud)
             except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"SKU price query failed: {str(e)}",
-                )
+                raise HTTPException(status_code=500, detail=f"SKU price query failed: {str(e)}")
 
     # Build sku_prices list with friendly names
     sku_prices = []
@@ -278,34 +349,37 @@ def _calc_use_case_monthly(uc: dict) -> list[float]:
 
 
 @app.get("/api/summary")
-async def get_summary(account: str = Query(default="Walmart"), scenario: int = Query(default=1)):
+async def get_summary(
+    account: str = Query(default="Walmart"),
+    scenario: int = Query(default=1),
+    user: dict = Depends(get_current_user),
+):
     """Return demand plan summary — pulls projections from saved scenario config."""
-    # Get consumption data for baseline — fetch from Logfood if not cached
-    consumption = _consumption_cache.get(account)
+    ud = _udir(user)
+    ck = f"{user['sub']}:{account}"
+    consumption = _consumption_cache.get(ck)
     if not consumption:
-        consumption = _load_json(f"consumption_{account}")
+        consumption = _load_json(f"consumption_{account}", ud)
     if not consumption:
         try:
             loop = asyncio.get_event_loop()
             consumption = await loop.run_in_executor(
                 _executor,
-                lambda: query_consumption(account, host=_config.get("host",""), token=_config.get("token",""), warehouse_id=_config.get("warehouse_id","")),
+                lambda: query_consumption(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user)),
             )
-            _consumption_cache[account] = consumption
-            _save_json(f"consumption_{account}", consumption)
+            _consumption_cache[ck] = consumption
+            _save_json(f"consumption_{account}", consumption, ud)
         except Exception as e:
             print(f"[summary] WARNING: could not fetch consumption for {account}: {e}")
             consumption = []
-            # Cache empty result to avoid re-querying on every request
-            _consumption_cache[account] = []
+            _consumption_cache[ck] = []
 
-    # Get domain mapping
     mapping_list = None
     for v in _domain_mapping_cache.values():
         mapping_list = v
         break
     if not mapping_list:
-        mapping_list = _load_json("domain_mapping") or []
+        mapping_list = _load_json("domain_mapping", ud) or _load_json("domain_mapping") or []
 
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
@@ -326,11 +400,12 @@ async def get_summary(account: str = Query(default="Walmart"), scenario: int = Q
 
     # Get saved scenario config
     key = f"{account}_{scenario}"
+    ukey = f"{user['sub']}:{key}"
     scenario_data = None
-    if key in _scenarios:
-        scenario_data = _scenarios[key].model_dump()
+    if ukey in _scenarios:
+        scenario_data = _scenarios[ukey].model_dump()
     else:
-        scenario_data = _load_json(f"scenario_{key}")
+        scenario_data = _load_json(f"scenario_{key}", ud)
 
     # Baseline growth rate
     baseline_growth = 0.02  # default 2% MoM
@@ -442,6 +517,7 @@ async def get_consumption_forecast(
     scenario: int = Query(default=1),
     months: int = Query(default=24),
     start_date: str = Query(default=""),
+    user: dict = Depends(get_current_user),
 ):
     """Return month-by-month consumption forecast rows for a scenario.
 
@@ -479,18 +555,21 @@ async def get_consumption_forecast(
             d = date(d.year, d.month + 1, 1)
 
     # Get consumption for baseline
-    consumption = _consumption_cache.get(account) or _load_json(f"consumption_{account}") or []
+    ud = _udir(user)
+    ck = f"{user['sub']}:{account}"
+    consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
     total_t12m = sum(float(r.get("dollar_dbu_list", 0) or 0) for r in consumption)
     months_count = max(len({r.get("month") for r in consumption if r.get("month")}), 1)
     avg_monthly = total_t12m / months_count
 
     # Get scenario config
     key = f"{account}_{scenario}"
+    ukey = f"{user['sub']}:{key}"
     scenario_data = None
-    if key in _scenarios:
-        scenario_data = _scenarios[key].model_dump()
+    if ukey in _scenarios:
+        scenario_data = _scenarios[ukey].model_dump()
     else:
-        scenario_data = _load_json(f"scenario_{key}")
+        scenario_data = _load_json(f"scenario_{key}", ud)
 
     baseline_growth = (scenario_data or {}).get("baseline_growth_rate", 0.02)
     mom_rate = baseline_growth / 12
@@ -552,12 +631,15 @@ async def get_consumption_forecast(
 
 
 @app.get("/api/summary-all")
-async def get_summary_all(account: str = Query(default="Walmart")):
+async def get_summary_all(
+    account: str = Query(default="Walmart"),
+    user: dict = Depends(get_current_user),
+):
     """Return summary for all 3 scenarios (fetched in parallel)."""
     results = await asyncio.gather(
-        get_summary(account, 1),
-        get_summary(account, 2),
-        get_summary(account, 3),
+        get_summary(account, 1, user),
+        get_summary(account, 2, user),
+        get_summary(account, 3, user),
     )
     return {"account": account, "scenarios": list(results)}
 
@@ -567,12 +649,14 @@ async def get_summary_all(account: str = Query(default="Walmart")):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scenario")
-async def save_scenario(data: ScenarioAssumptions):
+async def save_scenario(data: ScenarioAssumptions, user: dict = Depends(get_current_user)):
     """Save scenario assumptions with optimistic locking."""
+    ud = _udir(user)
     key = f"{data.account}_{data.scenario_id}"
-    current = _scenarios.get(key)
+    ukey = f"{user['sub']}:{key}"
+    current = _scenarios.get(ukey)
     if current is None:
-        cached = _load_json(f"scenario_{key}")
+        cached = _load_json(f"scenario_{key}", ud)
         if cached:
             current = ScenarioAssumptions(**cached)
     if current is not None and data.version != current.version:
@@ -581,23 +665,28 @@ async def save_scenario(data: ScenarioAssumptions):
             detail=f"Conflict: scenario was modified by another session (your version: {data.version}, current: {current.version})",
         )
     data.version = (current.version if current else 0) + 1
-    _scenarios[key] = data
-    _save_json(f"scenario_{key}", data.model_dump())
+    _scenarios[ukey] = data
+    _save_json(f"scenario_{key}", data.model_dump(), ud)
     return {"status": "ok", "key": key, "version": data.version}
 
 
 @app.get("/api/scenario")
-async def get_scenario(account: str = Query(default="Walmart"), scenario: int = Query(default=1)):
+async def get_scenario(
+    account: str = Query(default="Walmart"),
+    scenario: int = Query(default=1),
+    user: dict = Depends(get_current_user),
+):
     """Get scenario assumptions."""
+    ud = _udir(user)
     key = f"{account}_{scenario}"
-    if key in _scenarios:
-        return _scenarios[key].model_dump()
+    ukey = f"{user['sub']}:{key}"
+    if ukey in _scenarios:
+        return _scenarios[ukey].model_dump()
 
-    cached = _load_json(f"scenario_{key}")
+    cached = _load_json(f"scenario_{key}", ud)
     if cached:
         return cached
 
-    # Return defaults
     return {
         "scenario_id": scenario,
         "account": account,
@@ -613,28 +702,34 @@ async def get_scenario(account: str = Query(default="Walmart"), scenario: int = 
 # ---------------------------------------------------------------------------
 
 @app.post("/api/forecast")
-async def save_forecast(data: ForecastUpdate):
+async def save_forecast(data: ForecastUpdate, user: dict = Depends(get_current_user)):
     """Save/update forecast overrides."""
-    _forecast_overrides[data.account] = [o.model_dump() for o in data.overrides]
-    _save_json(f"forecast_{data.account}", _forecast_overrides[data.account])
+    ud = _udir(user)
+    fk = f"{user['sub']}:{data.account}"
+    _forecast_overrides[fk] = [o.model_dump() for o in data.overrides]
+    _save_json(f"forecast_{data.account}", _forecast_overrides[fk], ud)
     return {"status": "ok", "count": len(data.overrides)}
 
 
 @app.get("/api/forecast")
-async def get_forecast(account: str = Query(default="Walmart")):
+async def get_forecast(
+    account: str = Query(default="Walmart"),
+    user: dict = Depends(get_current_user),
+):
     """Get workspace-level forecast data."""
-    consumption = _consumption_cache.get(account) or _load_json(f"consumption_{account}") or []
+    ud = _udir(user)
+    ck = f"{user['sub']}:{account}"
+    consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
 
     mapping_list = None
     for v in _domain_mapping_cache.values():
         mapping_list = v
         break
     if not mapping_list:
-        mapping_list = _load_json("domain_mapping") or []
+        mapping_list = _load_json("domain_mapping", ud) or _load_json("domain_mapping") or []
 
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
-    # Aggregate by workspace
     ws_data: dict[str, dict] = {}
     for row in consumption:
         ws = row.get("workspace_name", "")
@@ -642,19 +737,18 @@ async def get_forecast(account: str = Query(default="Walmart")):
             ws_data[ws] = {
                 "workspace": ws,
                 "domain": ws_to_domain.get(ws, "Unmapped"),
-                "cloud": "AWS",  # Default; can be overridden
+                "cloud": "AWS",
                 "monthly_dbu": 0.0,
                 "total_dbu": 0.0,
             }
         ws_data[ws]["total_dbu"] += float(row.get("dollar_dbu_list", 0) or 0)
 
-    # Calculate monthly average
     for ws in ws_data.values():
         ws["monthly_dbu"] = round(ws["total_dbu"] / 12, 2)
         ws["total_dbu"] = round(ws["total_dbu"], 2)
 
-    # Apply overrides
-    overrides = _forecast_overrides.get(account) or _load_json(f"forecast_{account}") or []
+    fk = f"{user['sub']}:{account}"
+    overrides = _forecast_overrides.get(fk) or _load_json(f"forecast_{account}", ud) or []
     override_map = {o["workspace"]: o for o in overrides}
     for ws in ws_data.values():
         if ws["workspace"] in override_map:
@@ -674,32 +768,43 @@ async def get_forecast(account: str = Query(default="Walmart")):
 # ---------------------------------------------------------------------------
 
 @app.delete("/api/clear-data")
-async def clear_all_data():
-    """Delete all cached JSON files and clear in-memory caches."""
-    _domain_mapping_cache.clear()
-    _consumption_cache.clear()
-    _scenarios.clear()
-    _forecast_overrides.clear()
-    _sku_price_cache.clear()
+async def clear_all_data(user: dict = Depends(get_current_user)):
+    """Delete current user's cached JSON files and clear their in-memory caches."""
+    ud = _udir(user)
+    prefix = f"{user['sub']}:"
+    for k in list(_consumption_cache.keys()):
+        if k.startswith(prefix): del _consumption_cache[k]
+    for k in list(_scenarios.keys()):
+        if k.startswith(prefix): del _scenarios[k]
+    for k in list(_forecast_overrides.keys()):
+        if k.startswith(prefix): del _forecast_overrides[k]
+    for k in list(_sku_price_cache.keys()):
+        if k.startswith(prefix): del _sku_price_cache[k]
     deleted = []
-    for f in DATA_DIR.glob("*.json"):
-        f.unlink()
-        deleted.append(f.name)
+    for f in ud.glob("*.json"):
+        if f.name != "config.json":  # preserve warehouse_id
+            f.unlink()
+            deleted.append(f.name)
     return {"deleted": deleted, "count": len(deleted)}
 
 # ---------------------------------------------------------------------------
 
 @app.get("/api/account-overview")
-async def get_account_overview(account: str = Query(default="Walmart")):
+async def get_account_overview(
+    account: str = Query(default="Walmart"),
+    user: dict = Depends(get_current_user),
+):
     """High-level account metrics."""
-    consumption = _consumption_cache.get(account) or _load_json(f"consumption_{account}") or []
+    ud = _udir(user)
+    ck = f"{user['sub']}:{account}"
+    consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
 
     mapping_list = None
     for v in _domain_mapping_cache.values():
         mapping_list = v
         break
     if not mapping_list:
-        mapping_list = _load_json("domain_mapping") or []
+        mapping_list = _load_json("domain_mapping", ud) or _load_json("domain_mapping") or []
 
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
@@ -790,7 +895,10 @@ async def get_account_overview(account: str = Query(default="Walmart")):
 
 # ── Contract Health ────────────────────────────────────────────────────────────
 @app.get("/api/contract-health")
-async def get_contract_health(account: str = Query(default="")):
+async def get_contract_health(
+    account: str = Query(default=""),
+    user: dict = Depends(get_current_user),
+):
     """
     Fetch contract burn curve data from main.gtm_gold.commit_consumption_cpq_monthly.
     Returns monthly rows aggregated by opportunity, plus a derived summary.
@@ -798,9 +906,9 @@ async def get_contract_health(account: str = Query(default="")):
     if not account:
         return {"account": account, "opportunities": [], "summary": None}
 
-    host = _config.get("host", "")
-    token = _config.get("token", "")
-    warehouse_id = _config.get("warehouse_id", "")
+    host = _host(user)
+    token = _token(user)
+    warehouse_id = _warehouse(user)
 
     try:
         import asyncio as _aio
@@ -877,11 +985,10 @@ async def get_contract_health(account: str = Query(default="")):
 
 # ── Setup: status ──────────────────────────────────────────────────────────────
 @app.get("/api/setup/status")
-async def setup_status():
+async def setup_status(user: dict = Depends(get_current_user)):
     """Return which setup steps are complete."""
     import subprocess
     from sheets import get_stored_google_token
-    # Google is ok if stored token exists OR gcloud works
     google_ok = get_stored_google_token() is not None
     if not google_ok:
         try:
@@ -890,58 +997,23 @@ async def setup_status():
             google_ok = r.returncode == 0 and bool(r.stdout.strip())
         except Exception:
             pass
+    ucfg = _ucfg(user)
     return {
-        "databricks": bool(_config.get("host") and _config.get("token")),
+        "databricks": True,  # credentials come from login session
         "google": google_ok,
-        "warehouse_id": _config.get("warehouse_id", ""),
-        "host": _config.get("host", ""),
+        "warehouse_id": ucfg.get("warehouse_id", ""),
+        "host": _host(user),
+        "username": user["sub"],
     }
 
-# ── Setup: Databricks credentials ──────────────────────────────────────────────
-from pydantic import BaseModel as _BM
-
-class DatabricksConfig(_BM):
-    host: str
-    token: str
-    warehouse_id: str = ""
-
-@app.post("/api/setup/databricks")
-async def save_databricks_config(cfg: DatabricksConfig):
-    """Validate and save Databricks host + PAT token."""
-    import requests as _req
-    host = cfg.host.rstrip("/")
-    try:
-        # Quick token validation via REST — much faster than SDK cluster list
-        r = _req.get(
-            f"{host}/api/2.0/token/list",
-            headers={"Authorization": f"Bearer {cfg.token}"},
-            timeout=10,
-        )
-        if r.status_code == 401:
-            raise HTTPException(status_code=400, detail="Invalid token — 401 Unauthorized")
-        if r.status_code not in (200, 403):  # 403 = valid token, no permission to list tokens
-            raise HTTPException(status_code=400, detail=f"Connection failed: HTTP {r.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Connection failed: {str(e)}")
-    _config["host"] = host
-    _config["token"] = cfg.token
-    if cfg.warehouse_id:
-        _config["warehouse_id"] = cfg.warehouse_id
-    _save_config()
-    return {"status": "ok", "host": host}
-
 @app.get("/api/setup/warehouses")
-async def list_warehouses():
+async def list_warehouses(user: dict = Depends(get_current_user)):
     """List available SQL warehouses in the configured workspace."""
-    if not _config.get("host") or not _config.get("token"):
-        raise HTTPException(status_code=400, detail="Databricks credentials not configured")
     import requests as _req
     try:
         r = _req.get(
-            f"{_config['host']}/api/2.0/sql/warehouses",
-            headers={"Authorization": f"Bearer {_config['token']}"},
+            f"{_host(user)}/api/2.0/sql/warehouses",
+            headers={"Authorization": f"Bearer {_token(user)}"},
             timeout=15,
         )
         r.raise_for_status()
@@ -955,10 +1027,12 @@ async def list_warehouses():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/setup/warehouse")
-async def save_warehouse(data: dict):
-    """Save selected warehouse ID."""
-    _config["warehouse_id"] = data.get("warehouse_id", "")
-    _save_config()
+async def save_warehouse(data: dict, user: dict = Depends(get_current_user)):
+    """Save selected warehouse ID per user."""
+    ud = _udir(user)
+    ucfg = _ucfg(user)
+    ucfg["warehouse_id"] = data.get("warehouse_id", "")
+    _save_json("config", ucfg, ud)
     return {"status": "ok"}
 
 # ── Setup: Google — try gcloud first, then device flow ─────────────────────────
@@ -1011,10 +1085,11 @@ async def google_disconnect():
 
 # ── Account search ──────────────────────────────────────────────────────────────
 @app.get("/api/accounts-search")
-async def accounts_search(q: str = Query(default="")):
+async def accounts_search(
+    q: str = Query(default=""),
+    user: dict = Depends(get_current_user),
+):
     """Search Logfood for accounts matching query."""
-    if not _config.get("host") or not _config.get("token"):
-        raise HTTPException(status_code=400, detail="Databricks credentials not configured. Complete setup first.")
     from logfood import search_accounts
     try:
         loop = asyncio.get_event_loop()
@@ -1022,9 +1097,9 @@ async def accounts_search(q: str = Query(default="")):
             _executor,
             search_accounts,
             q,
-            _config["host"],
-            _config["token"],
-            _config.get("warehouse_id", ""),
+            _host(user),
+            _token(user),
+            _warehouse(user),
         )
         return {"accounts": results}
     except Exception as e:

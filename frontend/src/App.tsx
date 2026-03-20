@@ -6,6 +6,7 @@ import ScenarioTab from './components/ScenarioTab';
 import OverviewTab from './components/OverviewTab';
 import ConsumptionForecastTab from './components/ConsumptionForecastTab';
 import SetupTab from './components/SetupTab';
+import LoginPage from './components/LoginPage';
 import { exportToXLS } from './export';
 import { exportToExcelJS, exportToExcelJSAndUpload } from './exportExcelJS';
 import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
@@ -62,6 +63,43 @@ function loadSavedAccounts(): AccountConfig[] {
 }
 
 export default function App() {
+  const [authState, setAuthState] = useState<'checking' | 'unauthenticated' | 'authenticated'>('checking');
+  const [currentUser, setCurrentUser] = useState<{ username: string; host: string } | null>(null);
+
+  // Check session on mount
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => { setCurrentUser(data); setAuthState('authenticated'); })
+      .catch(() => setAuthState('unauthenticated'));
+  }, []);
+
+  const handleLogin = (username: string, host: string) => {
+    setCurrentUser({ username, host });
+    setAuthState('authenticated');
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setCurrentUser(null);
+    setAuthState('unauthenticated');
+  };
+
+  if (authState === 'checking') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-400 text-sm animate-pulse">Loading...</div>
+      </div>
+    );
+  }
+  if (authState === 'unauthenticated') {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
+  return <AppShell currentUser={currentUser!} onLogout={handleLogout} />;
+}
+
+function AppShell({ currentUser, onLogout }: { currentUser: { username: string; host: string }; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState('setup');
   const [accounts, setAccounts] = useState<AccountConfig[]>(loadSavedAccounts);
   const [exporting, setExporting] = useState(false);
@@ -282,6 +320,18 @@ export default function App() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Demand Plan App</h1>
               <p className="text-sm text-gray-500 mt-1">Databricks Consumption Planning & Forecasting</p>
+            </div>
+            {/* User badge + logout */}
+            <div className="flex items-center gap-2 ml-auto mr-4 mt-1">
+              <span className="text-xs text-slate-500">Signed in as</span>
+              <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded-full">{currentUser.username}</span>
+              <button
+                onClick={onLogout}
+                className="text-xs text-slate-400 hover:text-red-600 transition-colors ml-1"
+                title="Sign out"
+              >
+                Sign out
+              </button>
             </div>
             <div className="flex items-start gap-4">
               {/* Accounts — read-only chips, managed in Setup tab */}
