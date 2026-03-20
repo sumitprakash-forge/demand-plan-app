@@ -1000,6 +1000,9 @@ async def get_contract_health(
             "burn_curve":       burn_curve,
         })
 
+    # Sort by contract_start descending so the latest contract is always first
+    opportunities.sort(key=lambda o: o.get("contract_start") or "", reverse=True)
+
     # Overall summary across all opportunities
     total_commit = sum(o["commit_amount"] for o in opportunities)
     total_consumed = sum(o["cumulative_actual"] for o in opportunities)
