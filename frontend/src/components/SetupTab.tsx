@@ -485,7 +485,7 @@ function DomainMapUpload({ account }: { account: string }) {
         <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5 text-xs text-slate-700 space-y-1.5">
           <p className="font-semibold text-blue-800">CSV format — two columns required:</p>
           <ul className="space-y-0.5 text-slate-600 list-disc list-inside">
-            <li><code className="bg-white px-1 rounded text-[11px]">workspace_name</code> — exact Databricks workspace name (case-sensitive)</li>
+            <li><code className="bg-white px-1 rounded text-[11px]">workspace_name</code> — Databricks workspace name (case-insensitive)</li>
             <li><code className="bg-white px-1 rounded text-[11px]">domain</code> — business domain label, e.g. <em>Data Engineering</em>, <em>Analytics</em>, <em>ML & AI</em></li>
           </ul>
           <p className="font-semibold text-blue-800 pt-1">Example:</p>

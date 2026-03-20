@@ -428,14 +428,14 @@ async def get_summary(
             _consumption_cache[ck] = []
 
     mapping_list = _get_mapping(account, ud)
-    ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
+    ws_to_domain = {m["workspace"].lower(): m["domain"] for m in mapping_list}
 
     # Aggregate T12M by domain
     domain_totals: dict[str, float] = defaultdict(float)
     monthly_totals: dict[str, float] = defaultdict(float)
     for row in consumption:
         ws = row.get("workspace_name", "")
-        domain = ws_to_domain.get(ws, "Unmapped")
+        domain = ws_to_domain.get(ws.lower(), "Unmapped")
         dbu = row.get("dollar_dbu_list", 0) or 0
         domain_totals[domain] += float(dbu)
         month = row.get("month", "")
@@ -769,7 +769,7 @@ async def get_forecast(
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
 
     mapping_list = _get_mapping(account, ud)
-    ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
+    ws_to_domain = {m["workspace"].lower(): m["domain"] for m in mapping_list}
 
     ws_data: dict[str, dict] = {}
     for row in consumption:
@@ -777,7 +777,7 @@ async def get_forecast(
         if ws not in ws_data:
             ws_data[ws] = {
                 "workspace": ws,
-                "domain": ws_to_domain.get(ws, "Unmapped"),
+                "domain": ws_to_domain.get(ws.lower(), "Unmapped"),
                 "cloud": "AWS",
                 "monthly_dbu": 0.0,
                 "total_dbu": 0.0,
@@ -841,7 +841,7 @@ async def get_account_overview(
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
 
     mapping_list = _get_mapping(account, ud)
-    ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
+    ws_to_domain = {m["workspace"].lower(): m["domain"] for m in mapping_list}
 
     # Aggregate by month, domain, and SKU
     monthly_totals: dict[str, float] = defaultdict(float)
@@ -854,7 +854,7 @@ async def get_account_overview(
         month = row.get("month", "")
         ws = row.get("workspace_name", "")
         sku = row.get("sku", "Unknown") or "Unknown"
-        domain = ws_to_domain.get(ws, "Unmapped")
+        domain = ws_to_domain.get(ws.lower(), "Unmapped")
         dbu = float(row.get("dollar_dbu_list", 0) or 0)
         monthly_totals[month] += dbu
         domain_totals[domain] += dbu
