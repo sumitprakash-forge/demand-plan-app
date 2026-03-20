@@ -96,7 +96,6 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
       </div>
 
       <DatabricksStep status={status} onDone={refreshStatus} />
-      <GoogleStep status={status} onDone={refreshStatus} />
       <AccountPickerStep
         databricksReady={status?.databricks ?? false}
         accounts={accounts}
@@ -654,7 +653,7 @@ function AccountPickerStep({
   return (
     <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
-        <StepBadge n={3} done={accounts.some(a => a.name.trim())} />
+        <StepBadge n={2} done={accounts.some(a => a.name.trim())} />
         <div>
           <h3 className="font-semibold text-slate-800">Pick Accounts</h3>
           <p className="text-xs text-slate-500">Search Logfood and add accounts to your demand plan</p>
