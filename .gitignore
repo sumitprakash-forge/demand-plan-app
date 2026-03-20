@@ -7,3 +7,14 @@ server/data/
 
 # Docs, screenshots, and PDFs
 docs/
+
+# Screenshots
+screenshots/
+
+# Markdown docs (keep README only if needed — removing all)
+*.md
+
+# node_modules (already listed but was committed before — force untrack)
+frontend/node_modules/
+frontend/dist/
+server/__pycache__/
