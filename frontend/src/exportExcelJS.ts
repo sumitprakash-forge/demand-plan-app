@@ -20,7 +20,7 @@ export interface UseCase {
   workloadType?: string;
   upliftOnly?: boolean;
   skuBreakdown?: { sku: string; percentage: number; dbus: number; dollarDbu: number; overridePrice?: number }[];
-  adhocPeriods?: { id: string; label: string; months: number[]; skuAmounts: { sku: string; dollarPerMonth: number }[] }[];
+  adhocPeriods?: { id: string; label: string; months: number[]; skuAmounts: { sku: string; dbuPerMonth: number; dollarPerMonth: number; customDbuRate?: number }[] }[];
 }
 
 export interface ScenarioExportData {
@@ -864,16 +864,18 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     if (uc.adhocPeriods?.length) {
       uc.adhocPeriods.forEach((period) => {
         const periodTotal = period.skuAmounts.reduce((s, sa) => s + (sa.dollarPerMonth || 0), 0);
+        const periodTotalDbu = period.skuAmounts.reduce((s, sa) => s + (sa.dbuPerMonth || 0), 0);
         const monthsLabel = period.months.length > 0 ? `Months: ${period.months.join(', ')}` : 'No months selected';
         const y1Adhoc = period.months.filter(m => m >= 1 && m <= 12).length * periodTotal;
         const y2Adhoc = period.months.filter(m => m >= 13 && m <= 24).length * periodTotal;
         const y3Adhoc = period.months.filter(m => m >= 25 && m <= 36).length * periodTotal;
+        const dbuLabel = periodTotalDbu > 0 ? `+${Math.round(periodTotalDbu).toLocaleString()} DBUs/mo (${periodTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}/mo)` : (periodTotal > 0 ? `+${periodTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}/mo` : '');
         const adhocRow = ws.addRow([
           `    ⚡ ${period.label}`,
           '',
           `${period.months.length} months`,
           '',
-          periodTotal > 0 ? `+${periodTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}/mo` : '',
+          dbuLabel,
           monthsLabel,
           '', '', '', '', '', '', '',
           y1Adhoc, y2Adhoc, y3Adhoc, y1Adhoc + y2Adhoc + y3Adhoc,

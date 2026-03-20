@@ -36,7 +36,7 @@ interface AdhocPeriodRow {
   id: string;
   label: string;
   months: number[];
-  skuAmounts: { sku: string; dollarPerMonth: number }[];
+  skuAmounts: { sku: string; dbuPerMonth: number; dollarPerMonth: number; customDbuRate?: number }[];
 }
 
 interface ForecastRow {
@@ -175,7 +175,7 @@ function dbuRate(ucData: UseCase | null | undefined): number {
   if (ucData?.skuBreakdown?.length) {
     const totalDollar = ucData.skuBreakdown.reduce((s, a) => s + a.dollarDbu, 0);
     const totalDbu    = ucData.skuBreakdown.reduce((s, a) => s + a.dbus, 0);
-    if (totalDollar > 0) return totalDbu / totalDollar;
+    if (totalDollar > 0 && totalDbu > 0) return totalDbu / totalDollar;
   }
   return 1 / 0.20; // default: $0.20/DBU blended list price
 }
@@ -862,17 +862,18 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
 
                             {/* SKU breakdown sub-rows + adhoc rows — show when either exists */}
                             {(hasSkus || (row.adhoc_periods && row.adhoc_periods.length > 0)) && isExpanded && (() => {
-                              // Collect unique adhoc SKU rows: [periodLabel, sku, dollarPerMonth, monthsSet]
-                              const adhocSkuRows: { periodLabel: string; sku: string; dollarPerMonth: number; monthsSet: Set<number> }[] = [];
+                              // Collect unique adhoc SKU rows: [periodLabel, sku, dbuPerMonth, dollarPerMonth, monthsSet]
+                              const adhocSkuRows: { periodLabel: string; sku: string; dbuPerMonth: number; dollarPerMonth: number; monthsSet: Set<number> }[] = [];
                               (row.adhoc_periods || []).forEach(period => {
                                 period.skuAmounts.forEach(sa => {
-                                  if (!sa.dollarPerMonth) return;
+                                  if (!sa.dollarPerMonth && !sa.dbuPerMonth) return;
                                   const existing = adhocSkuRows.find(r => r.sku === sa.sku && r.periodLabel === period.label);
                                   if (existing) {
                                     period.months.forEach(m => existing.monthsSet.add(m));
-                                    existing.dollarPerMonth = Math.max(existing.dollarPerMonth, sa.dollarPerMonth); // use max if duplicate
+                                    existing.dollarPerMonth = Math.max(existing.dollarPerMonth, sa.dollarPerMonth);
+                                    existing.dbuPerMonth = Math.max(existing.dbuPerMonth, sa.dbuPerMonth || 0);
                                   } else {
-                                    adhocSkuRows.push({ periodLabel: period.label, sku: sa.sku, dollarPerMonth: sa.dollarPerMonth, monthsSet: new Set(period.months) });
+                                    adhocSkuRows.push({ periodLabel: period.label, sku: sa.sku, dbuPerMonth: sa.dbuPerMonth || 0, dollarPerMonth: sa.dollarPerMonth, monthsSet: new Set(period.months) });
                                   }
                                 });
                               });
@@ -922,16 +923,23 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                                           <span className="text-indigo-300 text-[10px]">⚡</span>
                                           <span className="text-indigo-700 text-[11px] font-medium">{asr.sku}</span>
                                           <span className="text-[10px] text-indigo-500 bg-indigo-100 rounded px-1">{asr.periodLabel}</span>
-                                          <span className="text-[10px] text-indigo-400">{formatCurrency(asr.dollarPerMonth)}/mo</span>
+                                          {asr.dbuPerMonth > 0 && (
+                                            <span className="text-[10px] text-indigo-400">{Math.round(asr.dbuPerMonth).toLocaleString()} DBUs/mo</span>
+                                          )}
+                                          <span className="text-[10px] text-indigo-400">({formatCurrency(asr.dollarPerMonth)}/mo)</span>
                                         </div>
                                       </td>
                                       <td className="px-2 py-1 text-indigo-300 text-[11px]">—</td>
                                       {row.values.map((_, i) => {
                                         const m = i + 1;
-                                        const adhocVal = asr.monthsSet.has(m) ? asr.dollarPerMonth : 0;
+                                        if (!asr.monthsSet.has(m)) {
+                                          return <td key={i} className="px-2 py-1 text-right text-[11px] font-mono whitespace-nowrap"><span className="text-slate-200">—</span></td>;
+                                        }
                                         return (
                                           <td key={i} className="px-2 py-1 text-right text-[11px] font-mono text-indigo-500 whitespace-nowrap">
-                                            {adhocVal > 0 ? formatCurrency(adhocVal) : <span className="text-slate-200">—</span>}
+                                            {viewMode === 'dbu' && asr.dbuPerMonth > 0
+                                              ? formatDbu(asr.dbuPerMonth)
+                                              : formatCurrency(asr.dollarPerMonth)}
                                           </td>
                                         );
                                       })}

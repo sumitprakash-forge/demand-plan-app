@@ -64,7 +64,7 @@ interface AdhocUsagePeriod {
   id: string;
   label: string;         // e.g., "Development Phase", "Pilot Acceleration"
   months: number[];      // 1-indexed selected months where this extra usage applies
-  skuAmounts: { sku: string; dollarPerMonth: number }[];  // per-SKU additional $/month
+  skuAmounts: { sku: string; dbuPerMonth: number; dollarPerMonth: number; customDbuRate?: number }[];  // per-SKU additional DBUs/month; dollarPerMonth is computed
 }
 
 interface NewUseCase {
@@ -266,7 +266,9 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
       months: p.months || [],
       skuAmounts: (p.skuAmounts || p.sku_amounts || []).map((sa: any) => ({
         sku: sa.sku || '',
+        dbuPerMonth: sa.dbuPerMonth || sa.dbu_per_month || 0,
         dollarPerMonth: sa.dollarPerMonth || sa.dollar_per_month || 0,
+        customDbuRate: sa.customDbuRate ?? sa.custom_dbu_rate ?? undefined,
       })),
     })),
   }));
@@ -556,7 +558,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     if (!period) return;
     const defaultSku = availableSkuNames[0] || 'Jobs Compute';
     updateAdhocPeriod(ucId, periodId, {
-      skuAmounts: [...period.skuAmounts, { sku: defaultSku, dollarPerMonth: 0 }],
+      skuAmounts: [...period.skuAmounts, { sku: defaultSku, dbuPerMonth: 0, dollarPerMonth: 0 }],
     });
   };
 
@@ -570,12 +572,20 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     });
   };
 
-  const updateAdhocSkuRow = (ucId: string, periodId: string, rowIdx: number, field: 'sku' | 'dollarPerMonth', value: string | number) => {
+  const updateAdhocSkuRow = (ucId: string, periodId: string, rowIdx: number, field: 'sku' | 'dbuPerMonth' | 'customDbuRate', value: string | number) => {
     const uc = newUseCases.find(u => u.id === ucId);
     if (!uc) return;
     const period = (uc.adhocPeriods || []).find(p => p.id === periodId);
     if (!period) return;
-    const skuAmounts = period.skuAmounts.map((sa, i) => i === rowIdx ? { ...sa, [field]: value } : sa);
+    const skuAmounts = period.skuAmounts.map((sa, i) => {
+      if (i !== rowIdx) return sa;
+      const updated = { ...sa, [field]: value };
+      // Recompute dollarPerMonth: dbuPerMonth × effective $/DBU price
+      const listPrice = skuPriceMap[updated.sku]?.[uc.cloud] ?? 0;
+      const effectivePrice = listPrice > 0 ? listPrice : (updated.customDbuRate ?? 0.20);
+      updated.dollarPerMonth = (updated.dbuPerMonth || 0) * effectivePrice;
+      return updated;
+    });
     updateAdhocPeriod(ucId, periodId, { skuAmounts });
   };
 
@@ -1295,7 +1305,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                         <div className="flex items-center justify-between px-3 py-2 bg-indigo-50">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-indigo-700">Development Phase / Adhoc Usage</span>
-                            <span className="text-[10px] text-indigo-500">Add extra $/month for specific months on top of steady-state ramp</span>
+                            <span className="text-[10px] text-indigo-500">Add extra DBUs/month for specific months on top of steady-state ramp</span>
                           </div>
                           <button onClick={() => addAdhocPeriod(uc.id)}
                             className="flex items-center gap-1 text-xs font-medium text-indigo-700 hover:text-indigo-900 border border-indigo-300 rounded px-2 py-0.5 hover:bg-indigo-100">
@@ -1310,7 +1320,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                         ) : (
                           <div className="divide-y divide-indigo-100 bg-white">
                             {(uc.adhocPeriods || []).map((period) => {
-                              const periodTotal = period.skuAmounts.reduce((s, sa) => s + (sa.dollarPerMonth || 0), 0);
+                              const periodTotalDbu = period.skuAmounts.reduce((s, sa) => s + (sa.dbuPerMonth || 0), 0);
+                              const periodTotalDollar = period.skuAmounts.reduce((s, sa) => s + (sa.dollarPerMonth || 0), 0);
                               return (
                                 <div key={period.id} className="px-3 py-3 space-y-2">
                                   {/* Period header */}
@@ -1322,9 +1333,9 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                                       className="flex-1 border border-indigo-200 rounded px-2 py-1 text-xs font-medium text-indigo-800 bg-indigo-50 placeholder-indigo-300"
                                       placeholder="Period label e.g. Development Phase"
                                     />
-                                    {periodTotal > 0 && (
+                                    {periodTotalDbu > 0 && (
                                       <span className="text-[10px] text-indigo-600 font-medium bg-indigo-100 px-1.5 py-0.5 rounded">
-                                        +{formatCurrency(periodTotal)}/mo × {period.months.length} months = {formatCurrency(periodTotal * period.months.length)}
+                                        +{Math.round(periodTotalDbu).toLocaleString()} DBUs/mo ({formatCurrency(periodTotalDollar)}/mo) × {period.months.length} months = {formatCurrency(periodTotalDollar * period.months.length)}
                                       </span>
                                     )}
                                     <button onClick={() => removeAdhocPeriod(uc.id, period.id)} className="text-red-300 hover:text-red-500 text-xs">✕</button>
@@ -1354,7 +1365,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                                   {/* Per-SKU amounts */}
                                   <div>
                                     <div className="flex items-center justify-between mb-1">
-                                      <span className="text-[10px] font-medium text-gray-500">Additional $/month per SKU{period.months.length > 0 ? ` (applied to ${period.months.length} selected month${period.months.length !== 1 ? 's' : ''})` : ''}:</span>
+                                      <span className="text-[10px] font-medium text-gray-500">Additional DBUs/month per SKU{period.months.length > 0 ? ` (applied to ${period.months.length} selected month${period.months.length !== 1 ? 's' : ''})` : ''}:</span>
                                       <button onClick={() => addAdhocSkuRow(uc.id, period.id)}
                                         className="flex items-center gap-0.5 text-[10px] font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 rounded px-1.5 py-0.5 hover:bg-indigo-50">
                                         <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
@@ -1365,38 +1376,63 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                                       <div className="text-[10px] text-gray-400 italic py-1">No SKUs added. Click "Add SKU" to specify additional usage per SKU.</div>
                                     ) : (
                                       <div className="space-y-1">
-                                        {period.skuAmounts.map((sa, saIdx) => (
-                                          <div key={saIdx} className="flex items-center gap-2">
-                                            <select
-                                              value={sa.sku}
-                                              onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'sku', e.target.value)}
-                                              className="flex-1 border border-indigo-200 rounded px-1.5 py-0.5 text-xs bg-white min-w-0">
-                                              {(availableSkuNames.length > 0
-                                                ? availableSkuNames
-                                                : ['All Purpose Compute', 'Jobs Compute', 'Serverless SQL', 'DLT Core', 'Model Serving', 'Foundation Model API', 'Vector Search']
-                                              ).map(name => <option key={name} value={name}>{name}</option>)}
-                                            </select>
-                                            <span className="text-gray-400 text-xs flex-shrink-0">$</span>
-                                            <input
-                                              type="number" min={0}
-                                              value={sa.dollarPerMonth || ''}
-                                              placeholder="0"
-                                              onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'dollarPerMonth', parseFloat(e.target.value) || 0)}
-                                              className="w-24 flex-shrink-0 border border-indigo-200 rounded px-1.5 py-0.5 text-xs text-right"
-                                            />
-                                            <span className="text-[10px] text-gray-400 flex-shrink-0">/mo</span>
-                                            {sa.dollarPerMonth > 0 && period.months.length > 0 && (
-                                              <span className="text-[10px] text-indigo-500 flex-shrink-0">= {formatCurrency(sa.dollarPerMonth * period.months.length)} total</span>
-                                            )}
-                                            <button onClick={() => removeAdhocSkuRow(uc.id, period.id, saIdx)}
-                                              className="text-red-300 hover:text-red-500 flex-shrink-0 text-[10px]">✕</button>
-                                          </div>
-                                        ))}
+                                        {period.skuAmounts.map((sa, saIdx) => {
+                                          const listPrice = skuPriceMap[sa.sku]?.[uc.cloud] ?? 0;
+                                          const isCustomSku = listPrice === 0;
+                                          const effectivePrice = isCustomSku ? (sa.customDbuRate ?? 0.20) : listPrice;
+                                          return (
+                                            <div key={saIdx} className="flex items-center gap-1.5 flex-wrap">
+                                              <select
+                                                value={sa.sku}
+                                                onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'sku', e.target.value)}
+                                                className="flex-1 min-w-[120px] border border-indigo-200 rounded px-1.5 py-0.5 text-xs bg-white">
+                                                {(availableSkuNames.length > 0
+                                                  ? availableSkuNames
+                                                  : ['All Purpose Compute', 'Jobs Compute', 'Serverless SQL', 'DLT Core', 'Model Serving', 'Foundation Model API', 'Vector Search']
+                                                ).map(name => <option key={name} value={name}>{name}</option>)}
+                                              </select>
+                                              <input
+                                                type="number" min={0}
+                                                value={sa.dbuPerMonth || ''}
+                                                placeholder="0"
+                                                onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'dbuPerMonth', parseFloat(e.target.value) || 0)}
+                                                className="w-24 flex-shrink-0 border border-indigo-200 rounded px-1.5 py-0.5 text-xs text-right"
+                                              />
+                                              <span className="text-[10px] text-gray-400 flex-shrink-0">DBUs/mo</span>
+                                              {isCustomSku ? (
+                                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                                  <span className="text-[10px] text-gray-400">@$</span>
+                                                  <input
+                                                    type="number" min={0} step={0.01}
+                                                    value={sa.customDbuRate ?? ''}
+                                                    placeholder="0.20"
+                                                    onChange={(e) => updateAdhocSkuRow(uc.id, period.id, saIdx, 'customDbuRate', parseFloat(e.target.value) || 0)}
+                                                    className="w-14 border border-indigo-200 rounded px-1 py-0.5 text-xs text-right"
+                                                    title="$/DBU rate for this custom SKU"
+                                                  />
+                                                  <span className="text-[10px] text-gray-400">/DBU</span>
+                                                </div>
+                                              ) : (
+                                                <span className="text-[10px] text-gray-400 flex-shrink-0 bg-gray-100 px-1 rounded" title="List price $/DBU">
+                                                  @${listPrice.toFixed(2)}/DBU
+                                                </span>
+                                              )}
+                                              {sa.dbuPerMonth > 0 && (
+                                                <span className="text-[10px] text-indigo-500 flex-shrink-0">
+                                                  = {formatCurrency(sa.dollarPerMonth)}/mo
+                                                  {period.months.length > 0 && ` (${formatCurrency(sa.dollarPerMonth * period.months.length)} total)`}
+                                                </span>
+                                              )}
+                                              <button onClick={() => removeAdhocSkuRow(uc.id, period.id, saIdx)}
+                                                className="text-red-300 hover:text-red-500 flex-shrink-0 text-[10px]">✕</button>
+                                            </div>
+                                          );
+                                        })}
                                         {period.skuAmounts.length > 1 && (
                                           <div className="flex items-center justify-end gap-2 pt-1 border-t border-indigo-100">
                                             <span className="text-[10px] text-indigo-600 font-medium">
-                                              Total: {formatCurrency(periodTotal)}/mo
-                                              {period.months.length > 0 && ` = ${formatCurrency(periodTotal * period.months.length)} over ${period.months.length}mo`}
+                                              Total: {Math.round(periodTotalDbu).toLocaleString()} DBUs/mo ({formatCurrency(periodTotalDollar)}/mo)
+                                              {period.months.length > 0 && ` = ${formatCurrency(periodTotalDollar * period.months.length)} over ${period.months.length}mo`}
                                             </span>
                                           </div>
                                         )}
