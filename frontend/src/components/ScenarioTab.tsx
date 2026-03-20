@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMapping, fetchSkuPrices, formatCurrency, ConflictError } from '../api';
+import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, formatCurrency, ConflictError } from '../api';
 import type { AccountConfig } from '../App';
 
 interface Props {
@@ -8,7 +8,6 @@ interface Props {
 
 interface InnerProps {
   account: string;
-  sheetUrl: string;
   contractStartDate?: string;
 }
 
@@ -176,7 +175,7 @@ function recalcSkuBreakdown(
   });
 }
 
-function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProps) {
+function ScenarioAccountView({ account, contractStartDate }: InnerProps) {
   const [scenario, setScenario] = useState(1);
   const [baselineGrowthRate, setBaselineGrowthRate] = useState(2); // % MoM
   const [assumptionsText, setAssumptionsText] = useState('');
@@ -237,7 +236,7 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     })),
   }));
 
-  // Full load: use cases + consumption baseline. Called when account/sheetUrl changes.
+  // Full load: use cases + consumption baseline. Called when account changes.
   const loadFull = async () => {
     setLoading(true);
     try {
@@ -254,12 +253,10 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
 
       // Load historical consumption as baseline
       let mapping: Record<string, string> = {};
-      if (sheetUrl) {
-        try {
-          const mapRes = await fetchDomainMapping(sheetUrl);
-          (mapRes.mapping || []).forEach((r: any) => { mapping[r.workspace] = r.domain; });
-        } catch (e) { console.warn('Mapping error:', e); }
-      }
+      try {
+        const mapRes = await fetchDomainMap(account);
+        (mapRes.mapping || []).forEach((r: any) => { mapping[r.workspace] = r.domain; });
+      } catch (e) { console.warn('Mapping error:', e); }
       const consumption = await fetchConsumption(account);
       const consumptionData = consumption.data || [];
       const domainMonthly: Record<string, Record<string, number>> = {};
@@ -311,7 +308,7 @@ function ScenarioAccountView({ account, sheetUrl, contractStartDate }: InnerProp
     }
   };
 
-  useEffect(() => { loadFull(); }, [account, sheetUrl]);
+  useEffect(() => { loadFull(); }, [account]);
 
   const handleScenarioSwitch = async (s: number) => {
     if (s === scenario) return;
@@ -1137,7 +1134,6 @@ export default function ScenarioTab({ accounts }: Props) {
         <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
           <ScenarioAccountView
             account={acct.sfdc_id}
-            sheetUrl={acct.sheetUrl}
             contractStartDate={acct.contractStartDate}
           />
         </div>

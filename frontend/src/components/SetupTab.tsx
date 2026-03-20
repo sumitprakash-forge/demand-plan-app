@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { AccountConfig } from '../App';
+import { uploadDomainMap, fetchDomainMap, fetchWorkspaceList } from '../api';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -378,6 +379,215 @@ function GoogleStep({ status, onDone }: { status: SetupStatus | null; onDone: ()
   );
 }
 
+// ─── Domain Map Upload ────────────────────────────────────────────────────────
+
+function DomainMapUpload({ account }: { account: string }) {
+  const [mapping, setMapping] = useState<{ workspace: string; domain: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const [error, setError] = useState('');
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [showFormat, setShowFormat] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetchDomainMap(account)
+      .then(d => setMapping(d.mapping || []))
+      .catch(() => {});
+  }, [account]);
+
+  const handleFile = async (file: File) => {
+    setUploading(true); setError(''); setWarnings([]);
+    try {
+      const result = await uploadDomainMap(account, file);
+      setMapping(result.mapping || []);
+      setWarnings(result.warnings || []);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    setLoadingTemplate(true);
+    try {
+      const result = await fetchWorkspaceList(account);
+      const workspaces: string[] = result.workspaces || [];
+      const rows = workspaces.length > 0
+        ? workspaces.map(ws => `${ws},`)
+        : ['example-workspace-prod,', 'analytics-workspace,', 'ml-platform,'];
+      const csv = ['workspace_name,domain', ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `domain_map_template_${account}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // fallback: blank template
+      const csv = 'workspace_name,domain\nexample-workspace,\n';
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `domain_map_template_${account}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setLoadingTemplate(false);
+    }
+  };
+
+  const preview = showAll ? mapping : mapping.slice(0, 5);
+
+  return (
+    <div className="space-y-2">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+            Domain Mapping
+          </label>
+          {mapping.length > 0 && (
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full font-medium">
+              {mapping.length} workspaces
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Format guide toggle */}
+          <button
+            type="button"
+            onClick={() => setShowFormat(v => !v)}
+            className="text-[10px] text-slate-400 hover:text-blue-600 flex items-center gap-0.5"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+            </svg>
+            {showFormat ? 'Hide format' : 'What format?'}
+          </button>
+          {/* Template download */}
+          <button
+            type="button"
+            onClick={handleDownloadTemplate}
+            disabled={loadingTemplate}
+            className="text-[10px] text-slate-400 hover:text-blue-600 flex items-center gap-0.5 disabled:opacity-50"
+            title="Download CSV template pre-filled with workspace names"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {loadingTemplate ? 'Generating…' : 'Template'}
+          </button>
+        </div>
+      </div>
+
+      {/* Format guide (collapsible) */}
+      {showFormat && (
+        <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2.5 text-xs text-slate-700 space-y-1.5">
+          <p className="font-semibold text-blue-800">CSV format — two columns required:</p>
+          <ul className="space-y-0.5 text-slate-600 list-disc list-inside">
+            <li><code className="bg-white px-1 rounded text-[11px]">workspace_name</code> — exact Databricks workspace name (case-sensitive)</li>
+            <li><code className="bg-white px-1 rounded text-[11px]">domain</code> — business domain label, e.g. <em>Data Engineering</em>, <em>Analytics</em>, <em>ML & AI</em></li>
+          </ul>
+          <p className="font-semibold text-blue-800 pt-1">Example:</p>
+          <pre className="bg-white border border-blue-100 rounded px-2 py-1.5 text-[11px] font-mono leading-relaxed overflow-x-auto">
+{`workspace_name,domain
+prod-analytics,Analytics
+ml-platform,ML & AI
+data-eng-prod,Data Engineering`}
+          </pre>
+          <p className="text-[10px] text-slate-500">
+            Steps: Open your mapping sheet → File → Download → CSV → upload below.<br/>
+            Or click <strong>Template</strong> above to get a pre-filled CSV with your workspace names.
+          </p>
+        </div>
+      )}
+
+      {/* Upload button */}
+      <div className="flex items-center gap-2">
+        <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }} />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-slate-600 disabled:opacity-50 font-medium"
+        >
+          {uploading ? (
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          )}
+          {uploading ? 'Uploading…' : mapping.length > 0 ? 'Re-upload CSV' : 'Upload CSV'}
+        </button>
+        {mapping.length === 0 && !uploading && (
+          <span className="text-[10px] text-slate-400 italic">No mapping uploaded yet — workspaces will show as "Unmapped"</span>
+        )}
+      </div>
+
+      {/* Error */}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      {/* Warnings */}
+      {warnings.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 text-xs text-amber-800 space-y-0.5">
+          <p className="font-semibold">⚠ {warnings.length} row{warnings.length > 1 ? 's' : ''} skipped:</p>
+          {warnings.map((w, i) => <p key={i} className="text-[11px]">{w}</p>)}
+        </div>
+      )}
+
+      {/* Preview table */}
+      {mapping.length > 0 && (
+        <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-slate-50 px-3 py-1.5 flex items-center justify-between border-b border-slate-200">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+              Mapping preview — {mapping.length} workspace{mapping.length > 1 ? 's' : ''}
+            </span>
+            <span className="text-[10px] text-emerald-600 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Loaded
+            </span>
+          </div>
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Workspace</th>
+                <th className="text-left px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Domain</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {preview.map((row, i) => (
+                <tr key={i} className="hover:bg-slate-50">
+                  <td className="px-3 py-1.5 font-mono text-slate-700 truncate max-w-[160px]" title={row.workspace}>{row.workspace}</td>
+                  <td className="px-3 py-1.5 text-slate-600">{row.domain}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {mapping.length > 5 && (
+            <div className="px-3 py-1.5 border-t border-slate-100 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowAll(v => !v)}
+                className="text-[10px] text-blue-600 hover:underline"
+              >
+                {showAll ? 'Show less ▲' : `Show all ${mapping.length} rows ▼`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Step 3: Account Picker from Logfood ─────────────────────────────────────
 
 function AccountPickerStep({
@@ -430,7 +640,6 @@ function AccountPickerStep({
       .map(r => ({
         name: r.sfdc_account_name,
         sfdc_id: r.sfdc_account_id,
-        sheetUrl: '',
         contractStartDate: '',
       }));
     if (newAccounts.length > 0) {
@@ -590,22 +799,7 @@ function AccountPickerStep({
                             >×</button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Domain Mapping Sheet URL</label>
-                            <input
-                              type="url"
-                              value={acct.sheetUrl}
-                              onChange={e => {
-                                const updated = [...accounts];
-                                const realIdx = accounts.findIndex(a => a.sfdc_id === acct.sfdc_id);
-                                updated[realIdx] = { ...updated[realIdx], sheetUrl: e.target.value };
-                                setAccounts(updated);
-                              }}
-                              placeholder="https://docs.google.com/spreadsheets/..."
-                              className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            />
-                          </div>
+                        <div className="space-y-3">
                           <div>
                             <label className="block text-[10px] font-medium text-slate-400 mb-0.5">Contract Start (M1)</label>
                             <input
@@ -617,9 +811,10 @@ function AccountPickerStep({
                                 updated[realIdx] = { ...updated[realIdx], contractStartDate: e.target.value };
                                 setAccounts(updated);
                               }}
-                              className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              className="border border-slate-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                             />
                           </div>
+                          <DomainMapUpload account={acct.sfdc_id || acct.name} />
                         </div>
                       </div>
                     );

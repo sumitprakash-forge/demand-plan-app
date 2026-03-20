@@ -9,12 +9,11 @@ import SetupTab from './components/SetupTab';
 import LoginPage from './components/LoginPage';
 import { exportToXLS } from './export';
 import { exportToExcelJS, exportToExcelJSAndUpload } from './exportExcelJS';
-import { fetchConsumption, fetchDomainMapping, fetchScenario } from './api';
+import { fetchConsumption, fetchDomainMap, fetchScenario } from './api';
 
 export interface AccountConfig {
   name: string;        // Display name
   sfdc_id: string;     // SFDC Account ID — always used as the backend key for all data
-  sheetUrl: string;
   contractStartDate: string; // YYYY-MM, e.g. "2026-04" — defines M1 of Year 1
 }
 
@@ -28,7 +27,7 @@ const TABS = [
 ];
 
 const DEFAULT_ACCOUNTS: AccountConfig[] = [
-  { name: 'Kroger', sfdc_id: 'Kroger', sheetUrl: '', contractStartDate: '' },
+  { name: 'Kroger', sfdc_id: 'Kroger', contractStartDate: '' },
 ];
 
 // Calculate use case monthly projection (same logic as ScenarioTab)
@@ -59,7 +58,7 @@ function loadSavedAccounts(): AccountConfig[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch { /* ignore */ }
-  return [{ name: '', sfdc_id: '', sheetUrl: '', contractStartDate: '' }];
+  return [{ name: '', sfdc_id: '', contractStartDate: '' }];
 }
 
 export default function App() {
@@ -122,7 +121,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
   };
 
   const addAccount = () => {
-    setAccounts(prev => [...prev, { name: '', sfdc_id: '', sheetUrl: '', contractStartDate: '' }]);
+    setAccounts(prev => [...prev, { name: '', sfdc_id: '', contractStartDate: '' }]);
   };
 
   const removeAccount = (index: number) => {
@@ -136,7 +135,6 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
     setLoadStatus(prev => { const n = { ...prev }; delete n[key]; return n; });
     try {
       await fetchConsumption(acct.sfdc_id, true);
-      if (acct.sheetUrl) await fetchDomainMapping(acct.sheetUrl);
       setLoadStatus(prev => ({ ...prev, [key]: 'ok' }));
       window.location.reload();
     } catch {
@@ -153,7 +151,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
       await fetch('/api/clear-data', { method: 'DELETE' });
     } catch { /* ignore network errors */ }
     localStorage.removeItem('demandplan_accounts');
-    setAccounts([{ name: '', sfdc_id: '', sheetUrl: '', contractStartDate: '' }]);
+    setAccounts([{ name: '', sfdc_id: '', contractStartDate: '' }]);
     setClearing(false);
     window.location.reload();
   }, []);
@@ -164,11 +162,10 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
 
     const buildAccountData = async (acct: AccountConfig) => {
       const accountId = acct.sfdc_id || acct.name;
-      const sheetUrl = acct.sheetUrl || '';
 
       const [consumptionRes, mappingRes, s1Res, s2Res, s3Res] = await Promise.all([
         fetchConsumption(accountId),
-        sheetUrl ? fetchDomainMapping(sheetUrl) : Promise.resolve({ mapping: [] }),
+        fetchDomainMap(accountId),
         fetchScenario(accountId, 1),
         fetchScenario(accountId, 2),
         fetchScenario(accountId, 3),

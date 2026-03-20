@@ -4,10 +4,27 @@ export class ConflictError extends Error {
   constructor() { super('conflict'); this.name = 'ConflictError'; }
 }
 
-export async function fetchDomainMapping(sheetUrl: string) {
-  const res = await fetch(`${BASE}/domain-mapping?sheet_url=${encodeURIComponent(sheetUrl)}`);
+export async function uploadDomainMap(account: string, file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/accounts/${encodeURIComponent(account)}/domain-map`, {
+    method: 'POST',
+    body: form,
+  });
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return res.json(); // { count, mapping, warnings }
+}
+
+export async function fetchDomainMap(account: string) {
+  const res = await fetch(`${BASE}/accounts/${encodeURIComponent(account)}/domain-map`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json(); // { count, mapping }
+}
+
+export async function fetchWorkspaceList(account: string) {
+  const res = await fetch(`${BASE}/accounts/${encodeURIComponent(account)}/workspaces`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json(); // { workspaces: string[] }
 }
 
 export async function fetchConsumption(account: string, refresh = false) {

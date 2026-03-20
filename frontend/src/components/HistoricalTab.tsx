@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { fetchConsumption, fetchDomainMapping, uploadConsumptionCSV, formatCurrency, formatNumber } from '../api';
+import { fetchConsumption, fetchDomainMap, uploadConsumptionCSV, formatCurrency, formatNumber } from '../api';
 import type { AccountConfig } from '../App';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
 
 type ViewMode = 'sku' | 'domain' | 'domain-workspace' | 'cloud-domain-sku';
 
-function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUrl: string }) {
+function HistoricalAccountView({ account }: { account: string }) {
   const [data, setData] = useState<any[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [wsCloud, setWsCloud] = useState<Record<string, string>>({});
@@ -30,24 +30,21 @@ function HistoricalAccountView({ account, sheetUrl }: { account: string; sheetUr
     setError('');
     setWarning('');
     try {
-      if (sheetUrl) {
-        try {
-          const mapRes = await fetchDomainMapping(sheetUrl);
-          const m: Record<string, string> = {};
-          const cloud: Record<string, string> = {};
-          const org: Record<string, string> = {};
-          (mapRes.mapping || []).forEach((r: any) => {
-            m[r.workspace] = r.domain;
-            if (r.cloudtype) cloud[r.workspace] = r.cloudtype;
-            if (r.org) org[r.workspace] = r.org;
-          });
-          setMapping(m);
-          setWsCloud(cloud);
-          setWsOrg(org);
-          if (mapRes.warning) setWarning(mapRes.warning);
-        } catch (e: any) {
-          console.warn('Domain mapping error:', e.message);
-        }
+      try {
+        const mapRes = await fetchDomainMap(account);
+        const m: Record<string, string> = {};
+        const cloud: Record<string, string> = {};
+        const org: Record<string, string> = {};
+        (mapRes.mapping || []).forEach((r: any) => {
+          m[r.workspace] = r.domain;
+          if (r.cloudtype) cloud[r.workspace] = r.cloudtype;
+          if (r.org) org[r.workspace] = r.org;
+        });
+        setMapping(m);
+        setWsCloud(cloud);
+        setWsOrg(org);
+      } catch (e: any) {
+        console.warn('Domain mapping error:', e.message);
       }
       const res = await fetchConsumption(account, forceRefresh);
       setData(res.data || []);
@@ -612,7 +609,6 @@ export default function HistoricalTab({ accounts }: Props) {
         <div key={acct.name} style={{ display: idx === i ? 'block' : 'none' }}>
           <HistoricalAccountView
             account={acct.sfdc_id}
-            sheetUrl={acct.sheetUrl}
           />
         </div>
       ))}

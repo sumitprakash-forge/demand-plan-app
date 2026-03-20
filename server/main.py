@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from models import ScenarioAssumptions, ForecastUpdate
-from sheets import fetch_domain_mapping
+from sheets import fetch_domain_mapping  # kept for legacy; CSV upload is primary path
 from logfood import query_consumption, query_sku_prices, query_contract_health
 from sku_mapping import get_friendly_name
 from auth import (
@@ -108,6 +108,18 @@ def _save_json(name: str, data, user_dir: Path | None = None):
     tmp.replace(base / f"{name}.json")  # atomic
 
 
+def _safe_name(name: str) -> str:
+    """Sanitise a name for use as a filename key (no slashes, spaces, colons)."""
+    for ch in ("/", "\\", " ", ":", "?", "*"):
+        name = name.replace(ch, "_")
+    return name
+
+
+def _get_mapping(account: str, ud: Path) -> list[dict]:
+    """Load the per-account workspace→domain mapping from the user's data dir."""
+    return _load_json(f"domain_mapping_{_safe_name(account)}", ud) or []
+
+
 def _udir(user: dict) -> Path:
     """Shorthand: return per-user data directory from JWT user dict."""
     return get_user_data_dir(user["sub"], DATA_DIR)
@@ -168,26 +180,67 @@ async def logout(response: Response):
 
 
 # ---------------------------------------------------------------------------
-# Domain Mapping
+# Domain Mapping — CSV upload (per account, per user)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/domain-mapping")
-async def get_domain_mapping(sheet_url: str = Query(...)):
-    """Read domain mapping from Google Sheets."""
-    if sheet_url in _domain_mapping_cache:
-        return {"mapping": _domain_mapping_cache[sheet_url]}
-
+@app.post("/api/accounts/{account_name}/domain-map")
+async def upload_domain_map(
+    account_name: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Upload a CSV (workspace_name,domain) and store it for this account."""
+    content = await file.read()
     try:
-        mapping = await fetch_domain_mapping(sheet_url)
-        _domain_mapping_cache[sheet_url] = mapping
-        _save_json("domain_mapping", mapping)
-        return {"mapping": mapping}
-    except Exception as e:
-        # Try loading from cache file
-        cached = _load_json("domain_mapping")
-        if cached:
-            return {"mapping": cached, "warning": f"Using cached data. Error: {str(e)}"}
-        raise HTTPException(status_code=500, detail=str(e))
+        text = content.decode("utf-8-sig")   # handle Excel BOM
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    rows: list[dict] = []
+    warnings: list[str] = []
+
+    for i, row in enumerate(reader):
+        norm = {k.strip().lower().replace(" ", "_"): (v or "").strip() for k, v in row.items()}
+        ws = norm.get("workspace_name") or norm.get("workspace") or ""
+        domain = norm.get("domain") or norm.get("domain_name") or ""
+        if ws and domain:
+            rows.append({"workspace": ws, "domain": domain})
+        elif ws:
+            warnings.append(f"Row {i + 2}: missing domain for workspace '{ws}'")
+
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid rows found. CSV must have columns: workspace_name, domain",
+        )
+
+    ud = _udir(user)
+    _save_json(f"domain_mapping_{_safe_name(account_name)}", rows, ud)
+    return {"status": "ok", "count": len(rows), "warnings": warnings[:10], "mapping": rows}
+
+
+@app.get("/api/accounts/{account_name}/domain-map")
+async def get_domain_map(
+    account_name: str,
+    user: dict = Depends(get_current_user),
+):
+    """Return the stored domain mapping for an account."""
+    rows = _get_mapping(account_name, _udir(user))
+    return {"mapping": rows, "count": len(rows)}
+
+
+@app.get("/api/accounts/{account_name}/workspaces")
+async def get_account_workspaces(
+    account_name: str,
+    user: dict = Depends(get_current_user),
+):
+    """Return unique workspace names seen in consumption data — used to seed the CSV template."""
+    ud = _udir(user)
+    ck = f"{user['sub']}:{account_name}"
+    consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account_name}", ud) or []
+    workspaces = sorted({r.get("workspace_name", "") for r in consumption if r.get("workspace_name")})
+    return {"workspaces": workspaces}
 
 
 # ---------------------------------------------------------------------------
@@ -374,13 +427,7 @@ async def get_summary(
             consumption = []
             _consumption_cache[ck] = []
 
-    mapping_list = None
-    for v in _domain_mapping_cache.values():
-        mapping_list = v
-        break
-    if not mapping_list:
-        mapping_list = _load_json("domain_mapping", ud) or _load_json("domain_mapping") or []
-
+    mapping_list = _get_mapping(account, ud)
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
     # Aggregate T12M by domain
@@ -721,13 +768,7 @@ async def get_forecast(
     ck = f"{user['sub']}:{account}"
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
 
-    mapping_list = None
-    for v in _domain_mapping_cache.values():
-        mapping_list = v
-        break
-    if not mapping_list:
-        mapping_list = _load_json("domain_mapping", ud) or _load_json("domain_mapping") or []
-
+    mapping_list = _get_mapping(account, ud)
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
     ws_data: dict[str, dict] = {}
@@ -799,13 +840,7 @@ async def get_account_overview(
     ck = f"{user['sub']}:{account}"
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
 
-    mapping_list = None
-    for v in _domain_mapping_cache.values():
-        mapping_list = v
-        break
-    if not mapping_list:
-        mapping_list = _load_json("domain_mapping", ud) or _load_json("domain_mapping") or []
-
+    mapping_list = _get_mapping(account, ud)
     ws_to_domain = {m["workspace"]: m["domain"] for m in mapping_list}
 
     # Aggregate by month, domain, and SKU

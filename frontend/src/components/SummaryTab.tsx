@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { fetchSummaryAll, fetchDomainMapping, fetchConsumption, formatCurrency } from '../api';
+import { fetchSummaryAll, fetchConsumption, formatCurrency } from '../api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import type { AccountConfig } from '../App';
 
@@ -84,9 +84,6 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
     // Initialize loading steps for accounts being fetched
     const initialSteps: Record<string, LoadingStep> = {};
     accountsToFetch.forEach(a => {
-      if (a.sheetUrl && !mappingLoadedFor.has(a.name)) {
-        initialSteps[`${a.name}-mapping`] = { step: `${a.name} — loading domain mapping...`, done: false };
-      }
       initialSteps[`${a.name}-consumption`] = { step: `${a.name} — fetching consumption from Logfood...`, done: false };
       initialSteps[`${a.name}-summary`] = { step: `${a.name} — building summary...`, done: false };
     });
@@ -107,23 +104,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
       const errors: string[] = [];
 
       await Promise.all(accountsToFetch.map(async (a) => {
-        // Step 1: Load domain mapping if needed
-        if (a.sheetUrl && !mappingLoadedFor.has(a.name)) {
-          try {
-            await fetchDomainMapping(a.sheetUrl);
-            updateStep(`${a.name}-mapping`, { step: `${a.name} — domain mapping loaded`, done: true });
-            setMappingLoadedFor(prev => {
-              const next = new Set(prev);
-              next.add(a.name);
-              return next;
-            });
-          } catch (e: any) {
-            updateStep(`${a.name}-mapping`, { step: `${a.name} — domain mapping failed: ${e.message}`, done: true, error: e.message });
-            console.warn(`Domain mapping load warning for ${a.name}:`, e.message);
-          }
-        }
-
-        // Step 2: Fetch consumption data (for row count display)
+        // Step 1: Fetch consumption data (for row count display)
         let rowCount = 0;
         try {
           const consumptionRes = await fetchConsumption(a.sfdc_id);
@@ -276,16 +257,6 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                   value={acct.name}
                   readOnly
                   className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-50 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Domain Mapping Sheet URL — {acct.name}</label>
-                <input
-                  type="text"
-                  value={acct.sheetUrl}
-                  readOnly
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-gray-50 text-sm"
-                  placeholder="Google Sheets URL"
                 />
               </div>
               <div>
