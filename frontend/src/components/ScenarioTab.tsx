@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, formatCurrency, ConflictError } from '../api';
+import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, fetchLogfoodUseCases, uploadLogfoodUseCases, formatCurrency, ConflictError } from '../api';
 import type { AccountConfig } from '../App';
 
 interface Props {
   accounts: AccountConfig[];
+  isDemo?: boolean;
 }
 
 interface InnerProps {
   account: string;
   contractStartDate?: string;
   contractMonths?: number;
+  isDemo?: boolean;
 }
 
 const MONTH_NAMES_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -76,7 +78,8 @@ interface NewUseCase {
   liveMonth: number;       // 1-36, must be >= onboarding
   rampType: RampType;
   scenarios: boolean[];    // [scenario1, scenario2, scenario3]
-  cloud: string;           // which cloud this use case runs on
+  cloud: string;           // which cloud this use case runs on (AWS / Azure / GCP)
+  tier: 'standard' | 'premium' | 'enterprise'; // workspace pricing tier
   description: string;     // what this use case is / business context
   assumptions: string;     // caveats, dependencies, notes
   skuBreakdown: SKUAllocation[];  // per-SKU split
@@ -198,7 +201,7 @@ function recalcSkuBreakdown(
   });
 }
 
-function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }: InnerProps) {
+function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, isDemo = false }: InnerProps) {
   const [scenario, setScenario] = useState(1);
   const [baselineGrowthRate, setBaselineGrowthRate] = useState(2); // % MoM
   const [assumptionsText, setAssumptionsText] = useState('');
@@ -213,32 +216,56 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
   const [loading, setLoading] = useState(false);
   const [expandedBaseline, setExpandedBaseline] = useState(true);
   const [expandedOverrides, setExpandedOverrides] = useState(false);
-  const [baselineOverrides, setBaselineOverrides] = useState<Record<number, number>>({}); // monthIndex(0-35) -> value
+  const [overrideMode, setOverrideMode] = useState<'absolute' | 'percent'>('absolute');
+  const [baselineOverrides, setBaselineOverrides] = useState<Record<number, number>>({}); // monthIndex(0-35) -> absolute dollar value
   const [expandedUC, setExpandedUC] = useState<string | null>(null);
 
-  // SKU price data
+  // Inner tab: 'builder' | 'logfood'
+  const [innerTab, setInnerTab] = useState<'builder' | 'logfood'>('builder');
+
+  // Logfood UCOs
+  const [logfoodUCOs, setLogfoodUCOs] = useState<any[]>([]);
+  const [logfoodUCOsLoading, setLogfoodUCOsLoading] = useState(false);
+  const [logfoodUCOsError, setLogfoodUCOsError] = useState('');
+  const [hiddenUCOIds, setHiddenUCOIds] = useState<Set<string>>(new Set());
+  const [expandedUCOIds, setExpandedUCOIds] = useState<Set<string>>(new Set());
+  const [ucoUploadError, setUcoUploadError] = useState('');
+  const [ucoUploading, setUcoUploading] = useState(false);
+
+  // SKU price data — tier_prices: { standard|premium|enterprise: { sku: { cloud: price } } }
   const [skuPriceData, setSkuPriceData] = useState<any>(null);
 
-  // Build a lookup: friendly_name -> { cloud -> price }
-  const skuPriceMap: Record<string, Record<string, number>> = React.useMemo(() => {
-    if (!skuPriceData?.friendly_skus) return {};
-    const map: Record<string, Record<string, number>> = {};
-    for (const item of skuPriceData.friendly_skus) {
-      map[item.friendly_name] = item.clouds;
-    }
-    return map;
+  // Build per-tier lookup maps: tier -> friendly_name -> cloud -> price
+  const tierPriceMaps: Record<string, Record<string, Record<string, number>>> = React.useMemo(() => {
+    if (!skuPriceData?.tier_prices) return {};
+    return skuPriceData.tier_prices;
   }, [skuPriceData]);
 
-  const availableClouds: string[] = skuPriceData?.clouds || ['azure', 'aws', 'gcp'];
+  // Default price map (premium) used for display/dropdown population
+  const skuPriceMap: Record<string, Record<string, number>> = React.useMemo(() => tierPriceMaps['premium'] || {}, [tierPriceMaps]);
+
+  const availableClouds: string[] = skuPriceData?.clouds || ['AWS', 'Azure', 'GCP'];
   const availableSkuNames: string[] = React.useMemo(() => {
     if (!skuPriceData?.friendly_skus) return [];
     return skuPriceData.friendly_skus.map((s: any) => s.friendly_name);
   }, [skuPriceData]);
 
-  // Load SKU prices on mount / account change
+  // Load SKU prices once per account (response includes all tiers)
   useEffect(() => {
     fetchSkuPrices(account).then(setSkuPriceData).catch(console.error);
   }, [account]);
+
+  // Load Logfood UCOs when switching to the logfood tab
+  useEffect(() => {
+    if (innerTab !== 'logfood') return;
+    if (logfoodUCOs.length > 0) return; // already loaded
+    setLogfoodUCOsLoading(true);
+    setLogfoodUCOsError('');
+    fetchLogfoodUseCases(account)
+      .then(data => setLogfoodUCOs(data.use_cases || []))
+      .catch(e => setLogfoodUCOsError(e.message || 'Failed to load UCOs'))
+      .finally(() => setLogfoodUCOsLoading(false));
+  }, [innerTab, account]);
 
   const parseUCs = (raw: any[]): NewUseCase[] => raw.map((uc: any) => ({
     id: uc.id || generateId(),
@@ -249,7 +276,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     liveMonth: uc.liveMonth || uc.live_month || 6,
     rampType: (uc.rampType || uc.ramp_type || 'linear') as RampType,
     scenarios: uc.scenarios || [true, false, false],
-    cloud: uc.cloud || 'azure',
+    cloud: (() => { const c = uc.cloud || 'Azure'; return c === 'aws' ? 'AWS' : c === 'gcp' ? 'GCP' : c === 'azure' ? 'Azure' : c; })(),
+    tier: (uc.tier || 'premium') as 'standard' | 'premium' | 'enterprise',
     description: uc.description || '',
     assumptions: uc.assumptions || '',
     upliftOnly: uc.upliftOnly ?? uc.uplift_only ?? false,
@@ -415,13 +443,66 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
       liveMonth: 8,
       rampType: 'linear',
       scenarios: [scenario === 1, scenario === 2, scenario === 3],
-      cloud: availableClouds[0] || 'azure',
+      cloud: availableClouds[0] || 'Azure',
+      tier: 'premium' as const,
       description: '',
       assumptions: '',
       upliftOnly: false,
       skuBreakdown: [],
       adhocPeriods: [],
     }]);
+  };
+
+  // Convert a calendar date string "YYYY-MM-DD" to a contract month number (1-36)
+  const dateToContractMonth = (dateStr: string | null | undefined): number | null => {
+    if (!dateStr || !contractStartDate) return null;
+    const [sy, sm] = contractStartDate.split('-').map(Number);
+    const [dy, dm] = dateStr.slice(0, 7).split('-').map(Number);
+    const diff = (dy * 12 + dm) - (sy * 12 + sm) + 1;
+    return Math.max(1, Math.min(36, diff));
+  };
+
+  const addUseCaseFromUCO = (uco: any) => {
+    const onboardM = dateToContractMonth(uco.onboarding_date) ?? 3;
+    const liveM = dateToContractMonth(uco.go_live_date) ?? Math.max(onboardM + 3, 6);
+    const safeLive = Math.max(liveM, onboardM + 1);
+    setIsDirty(true);
+    setNewUseCases(prev => [...prev, {
+      id: generateId(),
+      domain: uco.use_case_area || domains[0] || '',
+      name: uco.Name || '',
+      steadyStateDbu: uco.monthly_dollar || 0,
+      onboardingMonth: onboardM,
+      liveMonth: safeLive,
+      rampType: 'linear',
+      scenarios: [scenario === 1, scenario === 2, scenario === 3],
+      cloud: availableClouds[0] || 'Azure',
+      tier: 'premium' as const,
+      description: uco.business_use_case || '',
+      assumptions: `Logfood stage: ${uco.stage}${uco.demand_plan_stage ? ' · ' + uco.demand_plan_stage : ''}`,
+      upliftOnly: false,
+      skuBreakdown: [],
+      adhocPeriods: [],
+    }]);
+    setShowUCOPicker(false);
+    setUcoPickerSearch('');
+  };
+
+  const [showUCOPicker, setShowUCOPicker] = useState(false);
+  const [ucoPickerSearch, setUcoPickerSearch] = useState('');
+  const [ucoPickerLoading, setUcoPickerLoading] = useState(false);
+
+  const openUCOPicker = () => {
+    setShowUCOPicker(true);
+    setUcoPickerSearch('');
+    // Load UCOs if not yet loaded
+    if (logfoodUCOs.length === 0 && !logfoodUCOsLoading) {
+      setUcoPickerLoading(true);
+      fetchLogfoodUseCases(account)
+        .then(data => setLogfoodUCOs(data.use_cases || []))
+        .catch(e => setLogfoodUCOsError(e.message || 'Failed to load'))
+        .finally(() => setUcoPickerLoading(false));
+    }
   };
 
   const removeNewUseCase = async (id: string) => {
@@ -454,13 +535,14 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
     setNewUseCases(prev => prev.map(uc => {
       if (uc.id !== id) return uc;
       const updated = { ...uc, ...updates };
-      // Recalc SKU breakdown when steadyStateDbu, cloud, skuBreakdown percentages, or upliftOnly changes
-      if ('steadyStateDbu' in updates || 'cloud' in updates || 'skuBreakdown' in updates || 'upliftOnly' in updates) {
+      // Recalc SKU breakdown when steadyStateDbu, cloud, tier, skuBreakdown percentages, or upliftOnly changes
+      if ('steadyStateDbu' in updates || 'cloud' in updates || 'tier' in updates || 'skuBreakdown' in updates || 'upliftOnly' in updates) {
+        const ucTierMap = tierPriceMaps[updated.tier || 'premium'] || skuPriceMap;
         updated.skuBreakdown = recalcSkuBreakdown(
           updated.skuBreakdown,
           updated.steadyStateDbu,
           updated.cloud,
-          skuPriceMap,
+          ucTierMap,
           updated.upliftOnly
         );
       }
@@ -581,7 +663,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
       if (i !== rowIdx) return sa;
       const updated = { ...sa, [field]: value };
       // Recompute dollarPerMonth: dbuPerMonth × effective $/DBU price
-      const listPrice = skuPriceMap[updated.sku]?.[uc.cloud] ?? 0;
+      const ucPriceMap2 = tierPriceMaps[uc.tier || 'premium'] || skuPriceMap;
+      const listPrice = ucPriceMap2[updated.sku]?.[uc.cloud] ?? 0;
       const effectivePrice = listPrice > 0 ? listPrice : (updated.customDbuRate ?? 0.20);
       updated.dollarPerMonth = (updated.dbuPerMonth || 0) * effectivePrice;
       return updated;
@@ -597,7 +680,10 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
   // Projections
   const projections = React.useMemo(() => {
     const momRate = baselineGrowthRate / 100 / 12;
-    const totalBaselineMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
+    // Use same avg as backend: total T12M / unique months (not per-domain avg sum)
+    const allHistoricalMonths = new Set(domainBaselines.flatMap(b => Object.keys(b.monthlyActuals)));
+    const totalT12m = domainBaselines.reduce((s, b) => s + b.t12m, 0);
+    const totalBaselineMonthly = totalT12m / Math.max(allHistoricalMonths.size, 1);
 
     // Baseline projection (all historical consumption with growth, overrides applied)
     const baselineMonths = new Array(contractMonths).fill(0);
@@ -685,9 +771,276 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
         </div>
       )}
 
-      {loading && <div className="text-center py-8 text-gray-500">Loading historical baseline + scenario...</div>}
+      {/* UCO Picker Modal */}
+      {showUCOPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowUCOPicker(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <div>
+                <h3 className="text-sm font-bold text-gray-800">Add Use Case from Logfood</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Select a Salesforce UCO to pre-populate the use case form</p>
+              </div>
+              <button onClick={() => setShowUCOPicker(false)} className="text-gray-400 hover:text-gray-600 text-lg font-light leading-none">✕</button>
+            </div>
+            {/* Search */}
+            <div className="px-5 py-3 border-b">
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search by name, domain, or stage…"
+                value={ucoPickerSearch}
+                onChange={e => setUcoPickerSearch(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+            {/* List */}
+            <div className="overflow-y-auto flex-1">
+              {(ucoPickerLoading || logfoodUCOsLoading) && (
+                <div className="py-10 text-center text-sm text-gray-500">Loading use cases from Logfood…</div>
+              )}
+              {!ucoPickerLoading && !logfoodUCOsLoading && logfoodUCOs.length === 0 && (
+                <div className="py-10 text-center text-sm text-gray-400">No Logfood UCOs loaded. Visit the "Logfood Use Cases" tab first.</div>
+              )}
+              {!ucoPickerLoading && !logfoodUCOsLoading && logfoodUCOs.length > 0 && (() => {
+                const q = ucoPickerSearch.toLowerCase();
+                const filtered = logfoodUCOs.filter(u =>
+                  !hiddenUCOIds.has(u.Id) &&
+                  (!q || u.Name?.toLowerCase().includes(q) || u.use_case_area?.toLowerCase().includes(q) || u.stage?.toLowerCase().includes(q))
+                );
+                if (filtered.length === 0) return (
+                  <div className="py-10 text-center text-sm text-gray-400">No matching use cases.</div>
+                );
+                const stageBg: Record<string, string> = {
+                  U1: 'bg-gray-100 text-gray-700', U2: 'bg-blue-100 text-blue-700',
+                  U3: 'bg-amber-100 text-amber-700', U4: 'bg-green-100 text-green-700',
+                };
+                return (
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Stage</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Use Case Name</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Domain</th>
+                        <th className="px-4 py-2 text-right font-medium text-gray-500">$/mo</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Onboard</th>
+                        <th className="px-4 py-2 text-left font-medium text-gray-500">Go-Live</th>
+                        <th className="px-4 py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(uco => (
+                        <tr key={uco.Id} className="border-t hover:bg-blue-50 cursor-pointer" onClick={() => addUseCaseFromUCO(uco)}>
+                          <td className="px-4 py-2.5">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${stageBg[uco.stage] || 'bg-gray-100 text-gray-600'}`}>{uco.stage}</span>
+                          </td>
+                          <td className="px-4 py-2.5 font-medium text-gray-800 max-w-[220px]">
+                            <div className="truncate" title={uco.Name}>{uco.Name}</div>
+                            {uco.business_use_case && (
+                              <div className="text-[10px] text-gray-400 truncate mt-0.5" title={uco.business_use_case}>{uco.business_use_case}</div>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-500 max-w-[120px] truncate">{uco.use_case_area || '—'}</td>
+                          <td className="px-4 py-2.5 text-right font-mono text-gray-700">
+                            {uco.monthly_dollar ? formatCurrency(uco.monthly_dollar) : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-400">{uco.onboarding_date ? String(uco.onboarding_date).slice(0, 7) : '—'}</td>
+                          <td className="px-4 py-2.5 text-gray-400">{uco.go_live_date ? String(uco.go_live_date).slice(0, 7) : '—'}</td>
+                          <td className="px-4 py-2.5">
+                            <span className="text-blue-500 font-semibold text-[10px] px-2 py-0.5 border border-blue-200 rounded hover:bg-blue-100">Add</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+            <div className="px-5 py-3 border-t text-xs text-gray-400 flex items-center justify-between">
+              <span>{logfoodUCOs.filter(u => !hiddenUCOIds.has(u.Id)).length} UCOs available · hidden UCOs excluded</span>
+              <button onClick={() => setShowUCOPicker(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1 border rounded">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {!loading && (
+      {/* Inner tab switcher */}
+      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+        <button
+          onClick={() => setInnerTab('builder')}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${innerTab === 'builder' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Scenario Builder
+        </button>
+        <button
+          onClick={() => setInnerTab('logfood')}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${innerTab === 'logfood' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          Logfood Use Cases
+        </button>
+      </div>
+
+      {/* Logfood Use Cases tab */}
+      {innerTab === 'logfood' && (
+        <div className="bg-white rounded-lg shadow">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Active Use Cases from Salesforce (U1–U4)
+              {logfoodUCOs.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({logfoodUCOs.filter(u => !hiddenUCOIds.has(u.Id)).length} visible · {hiddenUCOIds.size} hidden)</span>}
+            </h3>
+            <div className="flex items-center gap-3">
+              {hiddenUCOIds.size > 0 && (
+                <button onClick={() => setHiddenUCOIds(new Set())} className="text-xs text-blue-600 hover:underline">
+                  Show all hidden
+                </button>
+              )}
+              {/* Upload button — always visible; in demo mode replaces Logfood; in non-demo acts as override */}
+              <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-colors ${ucoUploading ? 'bg-gray-100 text-gray-400' : 'bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100'}`}>
+                {ucoUploading ? 'Uploading…' : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload UCO JSON
+                  </>
+                )}
+                <input type="file" accept=".json" className="hidden" disabled={ucoUploading} onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setUcoUploading(true);
+                  setUcoUploadError('');
+                  try {
+                    const res = await uploadLogfoodUseCases(account, f);
+                    // Reload
+                    setLogfoodUCOs([]);
+                    setLogfoodUCOsLoading(true);
+                    const data = await fetchLogfoodUseCases(account);
+                    setLogfoodUCOs(data.use_cases || []);
+                  } catch (err: any) {
+                    setUcoUploadError(err.message || 'Upload failed');
+                  } finally {
+                    setUcoUploading(false);
+                    e.target.value = '';
+                  }
+                }} />
+              </label>
+            </div>
+          </div>
+
+          {/* Upload hint for demo mode */}
+          {isDemo && logfoodUCOs.length === 0 && !logfoodUCOsLoading && (
+            <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
+              <strong>Demo mode:</strong> Upload a JSON file to populate this table.
+              Each object must have: <code className="bg-amber-100 px-1 rounded">Id, Name, stage</code> — optional: <code className="bg-amber-100 px-1 rounded">use_case_area, monthly_dollar, t_shirt_size, go_live_date, onboarding_date, solution_architect, status, business_use_case</code>
+            </div>
+          )}
+
+          {ucoUploadError && <div className="px-4 py-2 text-xs text-red-600 bg-red-50 border-b">{ucoUploadError}</div>}
+          {logfoodUCOsLoading && <div className="text-center py-8 text-gray-500 text-sm">Loading use cases from Logfood...</div>}
+          {logfoodUCOsError && <div className="px-4 py-4 text-sm text-red-600">{logfoodUCOsError}</div>}
+          {!logfoodUCOsLoading && !logfoodUCOsError && logfoodUCOs.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-gray-500">No active U1–U4 use cases found for this account.</div>
+          )}
+          {!logfoodUCOsLoading && logfoodUCOs.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">Stage</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">Use Case Name</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">Domain</th>
+                    <th className="px-3 py-2 text-right font-medium text-gray-600">$/mo</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">T-Shirt</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">Onboard</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">Go-Live</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">SA Owner</th>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600">Status</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logfoodUCOs.map(uco => {
+                    const isHidden = hiddenUCOIds.has(uco.Id);
+                    const isExpanded = expandedUCOIds.has(uco.Id);
+                    const stageBg: Record<string, string> = {
+                      U1: 'bg-gray-100 text-gray-700',
+                      U2: 'bg-blue-100 text-blue-700',
+                      U3: 'bg-amber-100 text-amber-700',
+                      U4: 'bg-green-100 text-green-700',
+                    };
+                    const hasDesc = !!(uco.business_use_case);
+                    return (
+                      <React.Fragment key={uco.Id}>
+                        <tr className={`border-t ${isHidden ? 'opacity-40' : 'hover:bg-gray-50'}`}>
+                          <td className="px-3 py-2">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${stageBg[uco.stage] || 'bg-gray-100 text-gray-600'}`}>
+                              {uco.stage}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 font-medium text-gray-800">
+                            <div className="flex items-center gap-1">
+                              {hasDesc && (
+                                <button
+                                  onClick={() => setExpandedUCOIds(prev => {
+                                    const next = new Set(prev);
+                                    if (isExpanded) next.delete(uco.Id); else next.add(uco.Id);
+                                    return next;
+                                  })}
+                                  className="flex-shrink-0 text-blue-400 hover:text-blue-600"
+                                  title="Toggle description"
+                                >
+                                  <svg className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </button>
+                              )}
+                              <span className="max-w-[180px] truncate" title={uco.Name}>{uco.Name}</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-gray-600 max-w-[120px] truncate" title={uco.use_case_area || ''}>{uco.use_case_area || '—'}</td>
+                          <td className="px-3 py-2 text-right font-mono">
+                            {uco.monthly_dollar ? formatCurrency(uco.monthly_dollar) : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500">{uco.t_shirt_size || '—'}</td>
+                          <td className="px-3 py-2 text-gray-500">{uco.onboarding_date ? String(uco.onboarding_date).slice(0, 10) : '—'}</td>
+                          <td className="px-3 py-2 text-gray-500">{uco.go_live_date ? String(uco.go_live_date).slice(0, 10) : '—'}</td>
+                          <td className="px-3 py-2 text-gray-500 max-w-[120px] truncate" title={uco.solution_architect || ''}>{uco.solution_architect || '—'}</td>
+                          <td className="px-3 py-2 text-gray-500">{uco.status || '—'}</td>
+                          <td className="px-3 py-2">
+                            <button
+                              onClick={() => setHiddenUCOIds(prev => {
+                                const next = new Set(prev);
+                                if (isHidden) next.delete(uco.Id); else next.add(uco.Id);
+                                return next;
+                              })}
+                              className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${isHidden ? 'border-blue-300 text-blue-600 hover:bg-blue-50' : 'border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                            >
+                              {isHidden ? 'Show' : 'Hide'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isExpanded && hasDesc && (
+                          <tr className="border-t bg-blue-50">
+                            <td colSpan={10} className="px-6 py-2.5 text-xs text-gray-700">
+                              <span className="font-semibold text-gray-500 uppercase text-[10px] mr-2">Description</span>
+                              {uco.business_use_case}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {loading && innerTab === 'builder' && <div className="text-center py-8 text-gray-500">Loading historical baseline + scenario...</div>}
+
+      {!loading && innerTab === 'builder' && (
         <>
           {/* Summary Cards */}
           <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${numYears + 2}, minmax(0, 1fr))` }}>
@@ -753,9 +1106,9 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                   <input type="number" step="0.5" value={baselineGrowthRate}
                     onChange={(e) => { setIsDirty(true); setBaselineGrowthRate(parseFloat(e.target.value) || 0); }}
                     className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-right" />
-                  <span className="text-sm text-gray-500">% MoM</span>
+                  <span className="text-sm text-gray-500">% Annual</span>
                   <span className="text-xs text-gray-400">
-                    = {((Math.pow(1 + baselineGrowthRate / 100 / 12, 12) - 1) * 100).toFixed(1)}% annual
+                    ≈ {(baselineGrowthRate / 12).toFixed(2)}% MoM compound
                   </span>
                 </div>
               </div>
@@ -799,14 +1152,42 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
             </button>
             {expandedOverrides && (
               <div className="border-t px-4 py-4">
+                {/* Mode toggle */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[11px] text-gray-500 font-medium">Input mode:</span>
+                  <div className="flex rounded border border-gray-200 overflow-hidden text-xs">
+                    <button
+                      onClick={() => setOverrideMode('absolute')}
+                      className={`px-2.5 py-1 font-medium transition-colors ${overrideMode === 'absolute' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                    >
+                      $ Value
+                    </button>
+                    <button
+                      onClick={() => setOverrideMode('percent')}
+                      className={`px-2.5 py-1 font-medium transition-colors ${overrideMode === 'percent' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                    >
+                      % Adjust
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-gray-400">
+                    {overrideMode === 'percent' ? 'Enter +10 for +10% or -10 for -10% of projected value' : 'Enter absolute dollar amount'}
+                  </span>
+                </div>
                 <div className="overflow-x-auto">
                   <div className="flex gap-1 pb-2" style={{ minWidth: 'max-content' }}>
                     {Array.from({ length: contractMonths }, (_, i) => {
                       const monthLabel = getMonthLabel(i + 1, contractStartDate);
                       const isOverridden = i in baselineOverrides;
-                      const totalBaselineMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
+                      const allHM = new Set(domainBaselines.flatMap(b => Object.keys(b.monthlyActuals)));
+                      const totT12m = domainBaselines.reduce((s, b) => s + b.t12m, 0);
+                      const totalBaselineMonthly = totT12m / Math.max(allHM.size, 1);
                       const momRate = baselineGrowthRate / 100 / 12;
                       const computed = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
+                      // In % mode: display the % delta from computed; in absolute mode: display the raw value
+                      const pctDelta = isOverridden ? Math.round((baselineOverrides[i] / computed - 1) * 100) : undefined;
+                      const displayValue = overrideMode === 'percent'
+                        ? (isOverridden ? pctDelta : '')
+                        : (isOverridden ? baselineOverrides[i] : '');
                       return (
                         <div key={i} className="flex flex-col items-center" style={{ minWidth: 72 }}>
                           <div className="text-[9px] text-gray-400 text-center mb-1 leading-tight whitespace-pre-line">
@@ -814,8 +1195,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                           </div>
                           <input
                             type="number"
-                            value={isOverridden ? baselineOverrides[i] : ''}
-                            placeholder={Math.round(computed).toLocaleString()}
+                            value={displayValue as number | string}
+                            placeholder={overrideMode === 'percent' ? '0' : Math.round(computed).toLocaleString()}
                             onChange={(e) => {
                               setIsDirty(true);
                               const val = e.target.value.trim();
@@ -823,6 +1204,9 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                                 const next = { ...baselineOverrides };
                                 delete next[i];
                                 setBaselineOverrides(next);
+                              } else if (overrideMode === 'percent') {
+                                const pct = parseFloat(val) || 0;
+                                setBaselineOverrides(prev => ({ ...prev, [i]: Math.round(computed * (1 + pct / 100)) }));
                               } else {
                                 setBaselineOverrides(prev => ({ ...prev, [i]: parseFloat(val) || 0 }));
                               }
@@ -833,6 +1217,14 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                                 : 'bg-white border-gray-200 text-gray-400 focus:ring-blue-400'
                             }`}
                           />
+                          {/* In % mode show the resulting absolute value; in absolute mode show % delta */}
+                          {isOverridden && (
+                            <div className="text-[8px] text-amber-700 text-center mt-0.5 leading-tight">
+                              {overrideMode === 'percent'
+                                ? `$${Math.round(baselineOverrides[i] / 1000)}K`
+                                : `${pctDelta !== undefined && pctDelta >= 0 ? '+' : ''}${pctDelta}%`}
+                            </div>
+                          )}
                           {isOverridden && (
                             <button
                               onClick={() => {
@@ -853,7 +1245,10 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-400 mt-2">
-                  Type a value to override that month's baseline. Leave blank to use the computed growth-rate projection. Clear individual cells with ✕ reset or use Clear All above.
+                  {overrideMode === 'percent'
+                    ? 'Enter a % adjustment (e.g. +10 or -10) to set that month relative to the projected baseline. The absolute $ result is shown below each cell.'
+                    : 'Type an absolute dollar value to override that month\'s baseline. Leave blank to use the computed growth-rate projection.'}
+                  {' '}Clear individual cells with ✕ reset or use Clear All above.
                 </p>
               </div>
             )}
@@ -876,7 +1271,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
               </thead>
               <tbody>
                 <tr className="border-t hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium sticky left-0 bg-white">Existing Baseline (with {baselineGrowthRate}% MoM growth)</td>
+                  <td className="px-3 py-2 font-medium sticky left-0 bg-white">Existing Baseline (with {baselineGrowthRate}% annual growth)</td>
                   {projections.baseYearTotals.map((v, yi) => (
                     <td key={yi} className="px-3 py-2 text-right">{formatCurrency(v)}</td>
                   ))}
@@ -907,7 +1302,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
         </>
       )}
 
-      {/* Use Cases — independent panel, shared across S1/S2/S3 */}
+      {innerTab === 'builder' && (
+      <>{/* Use Cases — independent panel, shared across S1/S2/S3 */}
       <div className="rounded-xl border-2 border-blue-200 shadow-sm mt-6 overflow-hidden">
         {/* Panel header */}
         <div className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-blue-600 to-blue-500">
@@ -924,13 +1320,22 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
               </div>
             )}
           </div>
-          <button onClick={addNewUseCase}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-50 transition shadow-sm">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Use Case
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={addNewUseCase}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-50 transition shadow-sm">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Manual
+            </button>
+            <button onClick={openUCOPicker}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-800 text-white rounded-lg text-xs font-bold hover:bg-blue-900 transition shadow-sm border border-blue-400/30">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10" />
+              </svg>
+              From Logfood
+            </button>
+          </div>
         </div>
 
         {newUseCases.length === 0 ? (
@@ -1150,15 +1555,28 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Cloud</label>
-                        <div className="flex gap-2">
-                          {availableClouds.map(c => (
-                            <button key={c} onClick={() => updateUC(uc.id, { cloud: c })}
-                              className={`px-3 py-1.5 text-xs rounded border capitalize ${uc.cloud === c ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-medium ring-1 ring-indigo-200' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                              {c.toUpperCase()}
-                            </button>
-                          ))}
+                      <div className="flex flex-wrap gap-6">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1.5">Cloud</label>
+                          <div className="flex gap-2">
+                            {['AWS', 'Azure', 'GCP'].map(c => (
+                              <button key={c} onClick={() => updateUC(uc.id, { cloud: c })}
+                                className={`px-3 py-1.5 text-xs rounded border font-medium ${uc.cloud === c ? 'bg-indigo-50 border-indigo-400 text-indigo-700 ring-1 ring-indigo-200' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                                {c}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1.5">Workspace Tier</label>
+                          <div className="flex gap-2">
+                            {(['standard', 'premium', 'enterprise'] as const).map(t => (
+                              <button key={t} onClick={() => updateUC(uc.id, { tier: t })}
+                                className={`px-3 py-1.5 text-xs rounded border font-medium capitalize ${uc.tier === t ? 'bg-violet-50 border-violet-400 text-violet-700 ring-1 ring-violet-200' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                                {t.charAt(0).toUpperCase() + t.slice(1)}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       </div>
 
@@ -1190,7 +1608,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
                             <tbody>
                               {uc.skuBreakdown.map((alloc, idx) => {
                                 const isCustom = alloc.overridePrice !== undefined;
-                                const listPrice = skuPriceMap[alloc.sku]?.[uc.cloud] ?? 0;
+                                const ucPriceMap = tierPriceMaps[uc.tier || 'premium'] || skuPriceMap;
+                                const listPrice = ucPriceMap[alloc.sku]?.[uc.cloud] ?? 0;
                                 const effectivePrice = isCustom ? (alloc.overridePrice ?? 0) : listPrice;
                                 return (
                                   <tr key={idx} className={`border-t hover:bg-gray-50 ${isCustom ? 'bg-amber-50' : ''}`}>
@@ -1480,11 +1899,12 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36 }
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }
 
-export default function ScenarioTab({ accounts }: Props) {
+export default function ScenarioTab({ accounts, isDemo = false }: Props) {
   const [selectedAccountIdx, setSelectedAccountIdx] = useState(0);
 
   const idx = Math.min(selectedAccountIdx, accounts.length - 1);
@@ -1517,6 +1937,7 @@ export default function ScenarioTab({ accounts }: Props) {
             account={acct.sfdc_id}
             contractStartDate={acct.contractStartDate}
             contractMonths={acct.contractMonths ?? 36}
+            isDemo={isDemo}
           />
         </div>
       ))}

@@ -77,7 +77,6 @@ interface Props {
 
 export default function SetupTab({ accounts, setAccounts, onLoadAccount, loadingAccounts, loadStatus, isDemo = false }: Props) {
   const [status, setStatus] = useState<SetupStatus | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'accounts' | 'smoke-test'>(isDemo ? 'smoke-test' : 'accounts');
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -97,26 +96,9 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
         </p>
       </div>
 
-      {/* Sub-tab switcher — show both tabs only when not in demo mode */}
-      {!isDemo && (
-        <div className="flex gap-1 border-b border-slate-200">
-          {(['accounts', 'smoke-test'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveSubTab(tab)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeSubTab === tab
-                  ? 'border-[#FF3621] text-[#FF3621]'
-                  : 'border-transparent text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              {tab === 'accounts' ? 'Accounts' : 'Smoke Test'}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {activeSubTab === 'accounts' ? (
+      {isDemo ? (
+        <SmokeTestStep accounts={accounts} setAccounts={setAccounts} />
+      ) : (
         <>
           <DatabricksStep status={status} onDone={refreshStatus} />
           <AccountPickerStep
@@ -128,8 +110,6 @@ export default function SetupTab({ accounts, setAccounts, onLoadAccount, loading
             loadStatus={loadStatus}
           />
         </>
-      ) : (
-        <SmokeTestStep accounts={accounts} setAccounts={setAccounts} />
       )}
     </div>
   );

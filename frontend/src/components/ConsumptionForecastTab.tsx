@@ -182,26 +182,26 @@ function dbuRate(ucData: UseCase | null | undefined): number {
 
 function formatDbu(val: number): string {
   if (val === 0) return '';
-  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
-  if (val >= 1_000)     return `${(val / 1_000).toFixed(1)}K`;
-  return Math.round(val).toLocaleString();
+  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(2)}M`;
+  if (val >= 1_000)     return `${(val / 1_000).toFixed(2)}K`;
+  return val.toFixed(2);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ForecastDomainCharts({
-  forecastData, activeAccounts, activeScenario, months,
+  forecastData, activeAccounts, activeScenario, months, scenarioData, mergedUseCases,
 }: {
   forecastData: Record<string, ForecastData>;
   activeAccounts: AccountConfig[];
   activeScenario: number;
   months: number;
+  scenarioData: Record<string, ScenarioData>;
+  mergedUseCases: Record<string, UseCase[]>;
 }) {
   const [viewMode, setViewMode] = useState<'yearly' | 'monthly'>('yearly');
   const [metricMode, setMetricMode] = useState<'dollar' | 'dbu'>('dollar');
   const chartRef = useRef<HTMLDivElement>(null);
-
-  const DBU_RATE = 1 / 0.20; // default $0.20/DBU blended
 
   // Build use case label → monthly values (Baseline as its own series)
   const ucMonthly: Record<string, number[]> = {};
@@ -214,11 +214,18 @@ function ForecastDomainCharts({
     fd.rows.forEach(row => {
       const label = row.type === 'baseline' ? 'Baseline' : (row.label || 'Other');
       if (!ucMonthly[label]) ucMonthly[label] = new Array(months).fill(0);
-      // uplift_only rows: dollar impact is real but DBU count is 0
+      // For DBU mode use per-UC rate; uplift-only rows show 0 DBUs
       const isUpliftOnly = row.uplift_only === true;
-      row.values.slice(0, months).forEach((v, i) => {
-        ucMonthly[label][i] += (metricMode === 'dbu' && !isUpliftOnly) ? v * DBU_RATE : (metricMode === 'dbu' ? 0 : v);
-      });
+      if (metricMode === 'dbu') {
+        if (isUpliftOnly) return; // no DBU contribution
+        const ucData = row.type !== 'baseline'
+          ? (scenarioData[acc.name]?.new_use_cases || mergedUseCases[acc.name] || []).find(u => u.id === row.id)
+          : null;
+        const rate = row.type === 'baseline' ? (1 / 0.20) : dbuRate(ucData);
+        row.values.slice(0, months).forEach((v, i) => { ucMonthly[label][i] += v * rate; });
+      } else {
+        row.values.slice(0, months).forEach((v, i) => { ucMonthly[label][i] += v; });
+      }
     });
   });
 
@@ -596,6 +603,25 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
             if (!fd) return null;
             const monthLabels = fd.month_labels;
 
+            // Compute DBU totals by summing each row's actual DBU values (using per-UC SKU rate)
+            // This avoids the incorrect fixed-rate (1/0.20) conversion used on the dollar totals
+            const dbuTotals = Array(months).fill(0) as number[];
+            fd.rows.forEach(row => {
+              const isBaseline = row.type === 'baseline';
+              const ucData = !isBaseline
+                ? (scenarioData[acc.name]?.new_use_cases || mergedUseCases[acc.name] || []).find(u => u.id === row.id)
+                : null;
+              const rate = (row.uplift_only || ucData?.upliftOnly || ucData?.uplift_only) ? 0 : dbuRate(ucData);
+              row.values.slice(0, months).forEach((v, i) => { dbuTotals[i] += v * rate; });
+              (row.adhoc_periods || []).forEach(ap => {
+                ap.months.forEach(mIdx => {
+                  if (mIdx >= 1 && mIdx <= months) {
+                    ap.skuAmounts.forEach(asr => { dbuTotals[mIdx - 1] += asr.dbuPerMonth; });
+                  }
+                });
+              });
+            });
+
             return (
               <div key={acc.name} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                 {/* Account header */}
@@ -603,7 +629,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${colors.badge}`}>{SCENARIO_LABELS[sc]}</span>
                     <span className="font-semibold text-slate-800">{acc.name}</span>
-                    <span className="text-xs text-slate-500">• {(fd.baseline_growth * 100).toFixed(1)}% MoM baseline growth</span>
+                    <span className="text-xs text-slate-500">• {(fd.baseline_growth * 100).toFixed(1)}% annual baseline growth ({(fd.baseline_growth * 100 / 12).toFixed(2)}% MoM)</span>
                   </div>
                   <span className="text-xs text-slate-500">{fd.rows.filter(r => r.type === 'use_case').length} use cases active</span>
                 </div>
@@ -829,7 +855,7 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
                         {fd.totals.map((t, i) => (
                           <td key={i} className={`px-2 py-2 text-right text-xs font-bold ${colors.text} ${colors.light}`}>
                             {viewMode === 'dbu'
-                              ? formatDbu(t * (1 / 0.20))
+                              ? formatDbu(dbuTotals[i])
                               : formatCurrency(t)}
                           </td>
                         ))}
@@ -856,6 +882,8 @@ export default function ConsumptionForecastTab({ accounts }: { accounts: Account
           activeAccounts={activeAccounts}
           activeScenario={activeScenario}
           months={months}
+          scenarioData={scenarioData}
+          mergedUseCases={mergedUseCases}
         />
       )}
     </div>

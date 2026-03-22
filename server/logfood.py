@@ -223,6 +223,78 @@ def query_contract_health(account: str, host: str = "", token: str = "", warehou
     return rows
 
 
+UCO_SQL = """
+SELECT
+    u.Id,
+    u.Name,
+    u.Stages__c          AS stage,
+    u.DemandPlanStage__c AS demand_plan_stage,
+    u.MonthlyTotalDollarDBUs__c AS monthly_dollar,
+    u.T_Shirt_Size_Estimate__c  AS t_shirt_size,
+    u.Solution_Architect__c     AS solution_architect,
+    u.Go_Live_Date__c           AS go_live_date,
+    u.Business_Use_Case__c      AS business_use_case,
+    u.Use_Case_Area__c          AS use_case_area,
+    u.Status__c                 AS status,
+    u.OnboardingDate__c         AS onboarding_date
+FROM main.sfdc_bronze.usecase__c u
+JOIN main.sfdc_bronze.account a ON u.Account__c = a.Id
+WHERE a.Name ILIKE '%{account_name}%'
+  AND u.Stages__c IN ('U1','U2','U3','U4')
+  AND u.Active__c = 'true'
+  AND u.processDate >= current_date() - INTERVAL 7 DAYS
+GROUP BY ALL
+ORDER BY u.Stages__c, u.Name
+"""
+
+
+def query_logfood_use_cases(account: str, host: str = "", token: str = "", warehouse_id: str = "") -> list[dict]:
+    """
+    Query Salesforce UCOs (U1–U4) for an account from main.sfdc_bronze.usecase__c.
+    account can be an account name or SFDC account ID (looked up via account table).
+    Returns list of dicts with UCO details.
+    """
+    w = _get_client(host, token)
+    wh_id = warehouse_id if warehouse_id else "071969b1ec9a91ca"
+
+    # If it looks like an SFDC ID, resolve the account name first
+    account_name = account.strip()
+    if len(account_name) in (15, 18) and account_name[:3] == '001':
+        resolve_sql = f"SELECT Name FROM main.sfdc_bronze.account WHERE Id = '{account_name}' AND processDate >= current_date() - INTERVAL 7 DAYS LIMIT 1"
+        r = w.statement_execution.execute_statement(warehouse_id=wh_id, statement=resolve_sql, wait_timeout="30s")
+        if r.result and r.result.data_array:
+            account_name = r.result.data_array[0][0]
+
+    sql = UCO_SQL.format(account_name=account_name.replace("'", "''"))
+
+    result = w.statement_execution.execute_statement(
+        warehouse_id=wh_id,
+        statement=sql,
+        wait_timeout="50s",
+    )
+
+    if result.status and result.status.state and result.status.state.value in ("PENDING", "RUNNING"):
+        import time as _time
+        stmt_id = result.statement_id
+        for _ in range(24):
+            _time.sleep(5)
+            result = w.statement_execution.get_statement(stmt_id)
+            if result.status.state.value in ("SUCCEEDED", "FAILED", "CANCELED", "CLOSED"):
+                break
+
+    if not result.result or not result.result.data_array:
+        return []
+
+    columns = [col.name for col in result.manifest.schema.columns]
+    rows = []
+    for row_data in result.result.data_array:
+        row = dict(zip(columns, row_data))
+        if row.get("monthly_dollar") is not None:
+            row["monthly_dollar"] = float(row["monthly_dollar"])
+        rows.append(row)
+    return rows
+
+
 def search_accounts(query: str, host: str, token: str, warehouse_id: str) -> list[dict]:
     """
     Search for accounts by name or ID (last 90 days).

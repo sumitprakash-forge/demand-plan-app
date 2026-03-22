@@ -47,7 +47,7 @@ function calcUseCaseMonthly(uc: any): number[] {
       months[i] = (uc.rampType || 'linear') === 'linear' ? ss * progress : ss * Math.pow(progress, 2.5);
     }
     // Add adhoc period amounts
-    const adhocPeriods = uc.adhocPeriods || [];
+    const adhocPeriods = uc.adhocPeriods || uc.adhoc_periods || [];
     for (const period of adhocPeriods) {
       if ((period.months || []).includes(m)) {
         months[i] += (period.skuAmounts || []).reduce((s: number, sa: any) => s + (sa.dollarPerMonth || 0), 0);
@@ -197,7 +197,12 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
         return { domain, t12m, avgMonthly: t12m / Math.max(Object.keys(mData).length, 1) };
       }).sort((a, b) => b.t12m - a.t12m);
 
-      const totalBaseMonthly = domainBaselines.reduce((s, b) => s + b.avgMonthly, 0);
+      // Use same baseline avg formula as backend: total T12M / unique months count
+      // (not per-domain avg sum, which drifts when domains have different history coverage)
+      const allHistoricalMonths = new Set<string>();
+      historicalData.forEach((row: any) => { if (row.month) allHistoricalMonths.add(row.month); });
+      const totalT12m = domainBaselines.reduce((s, b) => s + b.t12m, 0);
+      const totalBaseMonthly = totalT12m / Math.max(allHistoricalMonths.size, 1);
 
       const scenarioRess = [s1Res, s2Res, s3Res];
       const scenariosData = ([1, 2, 3] as const).map((sNum, idx) => {
@@ -265,6 +270,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
           months: p.months || [],
           skuAmounts: (p.skuAmounts || p.sku_amounts || []).map((sa: any) => ({
             sku: sa.sku || '',
+            dbuPerMonth: sa.dbuPerMonth || sa.dbu_per_month || 0,
             dollarPerMonth: sa.dollarPerMonth || sa.dollar_per_month || 0,
           })),
         })),
@@ -411,7 +417,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
         {activeTab === 'setup' && <SetupTab accounts={accounts} setAccounts={setAccounts} onLoadAccount={handleLoadAccount} loadingAccounts={loadingAccounts} loadStatus={loadStatus} isDemo={currentUser.demo ?? false} />}
         {activeTab === 'summary' && <SummaryTab accounts={accounts} setAccounts={setAccounts} />}
         {activeTab === 'historical' && <HistoricalTab accounts={accounts} />}
-        {activeTab === 'scenario' && <ScenarioTab accounts={accounts} />}
+        {activeTab === 'scenario' && <ScenarioTab accounts={accounts} isDemo={currentUser.demo ?? false} />}
         {activeTab === 'consumption-forecast' && <ConsumptionForecastTab accounts={accounts} />}
         {activeTab === 'overview' && <OverviewTab accounts={accounts} />}
       </main>

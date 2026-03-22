@@ -90,8 +90,8 @@ export async function saveForecast(account: string, overrides: any[]) {
   return res.json();
 }
 
-export async function fetchSkuPrices(account: string) {
-  const res = await fetch(`${BASE}/sku-prices?account=${encodeURIComponent(account)}`);
+export async function fetchSkuPrices(account: string, tier = 'premium') {
+  const res = await fetch(`${BASE}/sku-prices?account=${encodeURIComponent(account)}&tier=${encodeURIComponent(tier)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -106,6 +106,30 @@ export async function fetchConsumptionForecast(account: string, scenario: number
 
 export async function fetchAccountOverview(account: string) {
   const res = await fetch(`${BASE}/account-overview?account=${encodeURIComponent(account)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchLogfoodUseCases(account: string) {
+  const res = await fetch(`${BASE}/logfood-use-cases?account=${encodeURIComponent(account)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json(); // { account, use_cases: [...] }
+}
+
+export async function uploadLogfoodUseCases(account: string, file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/logfood-use-cases/upload?account=${encodeURIComponent(account)}`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json(); // { status, account, records }
+}
+
+export async function refreshLogfoodUseCases(account: string) {
+  // Force re-fetch by calling with a cache-busting param the server ignores
+  const res = await fetch(`${BASE}/logfood-use-cases?account=${encodeURIComponent(account)}&refresh=1`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

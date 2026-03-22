@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from models import ScenarioAssumptions, ForecastUpdate
 from sheets import fetch_domain_mapping  # kept for legacy; CSV upload is primary path
-from logfood import query_consumption, query_sku_prices, query_contract_health
+from logfood import query_consumption, query_sku_prices, query_contract_health, query_logfood_use_cases
 from sku_mapping import get_friendly_name
 from auth import (
     create_session_token, get_current_user, get_user_data_dir,
@@ -47,57 +47,98 @@ _scenarios: dict[str, ScenarioAssumptions] = {}
 _forecast_overrides: dict[str, list[dict]] = {}
 _sku_price_cache: dict[str, list[dict]] = {}
 
-# Static SKU prices used when Logfood is unavailable (demo / smoke-test mode).
-# Prices are standard Databricks list prices (USD per DBU).
+# Databricks list prices by tier × cloud (source: databricks.com/product/pricing, Mar 2026).
+# Standard tier is EOL (AWS/GCP upgraded Oct 2025, Azure Oct 2026) — kept for legacy workspaces.
+# Azure note: Premium on Azure = Enterprise on AWS/GCP (same price shown for both tiers on Azure).
+# friendly_name → tier → cloud → $/DBU
+_TIER_SKU_PRICES: dict[str, dict[str, dict[str, float]]] = {
+    "All Purpose Compute": {
+        "standard":   {"AWS": 0.40, "Azure": 0.40, "GCP": 0.40},
+        "premium":    {"AWS": 0.55, "Azure": 0.55, "GCP": 0.55},
+        "enterprise": {"AWS": 0.65, "Azure": 0.55, "GCP": 0.55},
+    },
+    "All Purpose Compute (Photon)": {
+        "standard":   {"AWS": 0.40, "Azure": 0.40, "GCP": 0.40},
+        "premium":    {"AWS": 0.55, "Azure": 0.55, "GCP": 0.55},
+        "enterprise": {"AWS": 0.65, "Azure": 0.55, "GCP": 0.55},
+    },
+    "Jobs Compute": {
+        "standard":   {"AWS": 0.10, "Azure": 0.15, "GCP": 0.10},
+        "premium":    {"AWS": 0.15, "Azure": 0.30, "GCP": 0.15},
+        "enterprise": {"AWS": 0.20, "Azure": 0.30, "GCP": 0.15},
+    },
+    "Jobs Compute (Photon)": {
+        "standard":   {"AWS": 0.10, "Azure": 0.15, "GCP": 0.10},
+        "premium":    {"AWS": 0.15, "Azure": 0.30, "GCP": 0.15},
+        "enterprise": {"AWS": 0.20, "Azure": 0.30, "GCP": 0.15},
+    },
+    "Serverless Jobs": {
+        "standard":   {"AWS": 0.35, "Azure": 0.45, "GCP": 0.35},
+        "premium":    {"AWS": 0.35, "Azure": 0.45, "GCP": 0.35},
+        "enterprise": {"AWS": 0.45, "Azure": 0.45, "GCP": 0.35},
+    },
+    "SQL Warehouse": {
+        "standard":   {"AWS": 0.22, "Azure": 0.22, "GCP": 0.22},
+        "premium":    {"AWS": 0.22, "Azure": 0.22, "GCP": 0.22},
+        "enterprise": {"AWS": 0.22, "Azure": 0.22, "GCP": 0.22},
+    },
+    "Serverless SQL": {
+        "standard":   {"AWS": 0.70, "Azure": 0.70, "GCP": 0.70},
+        "premium":    {"AWS": 0.70, "Azure": 0.70, "GCP": 0.70},
+        "enterprise": {"AWS": 0.70, "Azure": 0.70, "GCP": 0.70},
+    },
+    "DLT Core": {
+        "standard":   {"AWS": 0.20, "Azure": 0.20, "GCP": 0.20},
+        "premium":    {"AWS": 0.20, "Azure": 0.30, "GCP": 0.20},
+        "enterprise": {"AWS": 0.20, "Azure": 0.30, "GCP": 0.20},
+    },
+    "DLT Core (Photon)": {
+        "standard":   {"AWS": 0.20, "Azure": 0.20, "GCP": 0.20},
+        "premium":    {"AWS": 0.20, "Azure": 0.30, "GCP": 0.20},
+        "enterprise": {"AWS": 0.20, "Azure": 0.30, "GCP": 0.20},
+    },
+    "DLT Advanced": {
+        "standard":   {"AWS": 0.36, "Azure": 0.36, "GCP": 0.36},
+        "premium":    {"AWS": 0.36, "Azure": 0.54, "GCP": 0.36},
+        "enterprise": {"AWS": 0.36, "Azure": 0.54, "GCP": 0.36},
+    },
+    "DLT Advanced (Photon)": {
+        "standard":   {"AWS": 0.36, "Azure": 0.36, "GCP": 0.36},
+        "premium":    {"AWS": 0.36, "Azure": 0.54, "GCP": 0.36},
+        "enterprise": {"AWS": 0.36, "Azure": 0.54, "GCP": 0.36},
+    },
+    "DLT Pro": {
+        "standard":   {"AWS": 0.25, "Azure": 0.25, "GCP": 0.25},
+        "premium":    {"AWS": 0.25, "Azure": 0.38, "GCP": 0.25},
+        "enterprise": {"AWS": 0.25, "Azure": 0.38, "GCP": 0.25},
+    },
+    "Model Serving": {
+        "standard":   {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+        "premium":    {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+        "enterprise": {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+    },
+    "Serverless Inference": {
+        "standard":   {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+        "premium":    {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+        "enterprise": {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+    },
+    "Foundation Model API": {
+        "standard":   {"AWS": 0.105, "Azure": 0.105, "GCP": 0.105},
+        "premium":    {"AWS": 0.105, "Azure": 0.105, "GCP": 0.105},
+        "enterprise": {"AWS": 0.105, "Azure": 0.105, "GCP": 0.105},
+    },
+    "Vector Search": {
+        "standard":   {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+        "premium":    {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+        "enterprise": {"AWS": 0.07, "Azure": 0.07, "GCP": 0.07},
+    },
+}
+
+# Flat list kept for legacy fallback (Logfood unavailable)
 _STATIC_SKU_PRICES: list[dict] = [
-    # All Purpose Compute
-    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE", "cloud": "Azure", "list_price": 0.55},
-    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE", "cloud": "GCP", "list_price": 0.55},
-    # All Purpose Compute (Photon)
-    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.55},
-    {"sku": "PREMIUM_ALL_PURPOSE_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.55},
-    # Jobs Compute
-    {"sku": "PREMIUM_JOBS_COMPUTE", "cloud": "Azure", "list_price": 0.30},
-    {"sku": "PREMIUM_JOBS_COMPUTE", "cloud": "GCP", "list_price": 0.30},
-    # Jobs Compute (Photon)
-    {"sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.30},
-    {"sku": "PREMIUM_JOBS_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.30},
-    # Serverless Jobs
-    {"sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE", "cloud": "Azure", "list_price": 0.40},
-    {"sku": "PREMIUM_JOBS_SERVERLESS_COMPUTE", "cloud": "GCP", "list_price": 0.40},
-    # SQL Warehouse
-    {"sku": "PREMIUM_SQL_COMPUTE", "cloud": "Azure", "list_price": 0.22},
-    {"sku": "PREMIUM_SQL_COMPUTE", "cloud": "GCP", "list_price": 0.22},
-    # Serverless SQL
-    {"sku": "PREMIUM_SQL_SERVERLESS_COMPUTE", "cloud": "Azure", "list_price": 0.70},
-    {"sku": "PREMIUM_SQL_SERVERLESS_COMPUTE", "cloud": "GCP", "list_price": 0.70},
-    # DLT Core
-    {"sku": "PREMIUM_DLT_CORE_COMPUTE", "cloud": "Azure", "list_price": 0.36},
-    {"sku": "PREMIUM_DLT_CORE_COMPUTE", "cloud": "GCP", "list_price": 0.36},
-    # DLT Core (Photon)
-    {"sku": "PREMIUM_DLT_CORE_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.36},
-    {"sku": "PREMIUM_DLT_CORE_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.36},
-    # DLT Advanced
-    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE", "cloud": "Azure", "list_price": 0.54},
-    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE", "cloud": "GCP", "list_price": 0.54},
-    # DLT Advanced (Photon)
-    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE_(PHOTON)", "cloud": "Azure", "list_price": 0.54},
-    {"sku": "PREMIUM_DLT_ADVANCED_COMPUTE_(PHOTON)", "cloud": "GCP", "list_price": 0.54},
-    # DLT Pro
-    {"sku": "PREMIUM_DLT_PRO_COMPUTE", "cloud": "Azure", "list_price": 0.45},
-    {"sku": "PREMIUM_DLT_PRO_COMPUTE", "cloud": "GCP", "list_price": 0.45},
-    # Model Serving
-    {"sku": "PREMIUM_MODEL_SERVING", "cloud": "Azure", "list_price": 0.07},
-    {"sku": "PREMIUM_MODEL_SERVING", "cloud": "GCP", "list_price": 0.07},
-    # Serverless Inference
-    {"sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE", "cloud": "Azure", "list_price": 0.07},
-    {"sku": "PREMIUM_SERVERLESS_REAL_TIME_INFERENCE", "cloud": "GCP", "list_price": 0.07},
-    # Foundation Model API
-    {"sku": "PREMIUM_FOUNDATION_MODEL_TOKENS", "cloud": "Azure", "list_price": 0.105},
-    {"sku": "PREMIUM_FOUNDATION_MODEL_TOKENS", "cloud": "GCP", "list_price": 0.105},
-    # Vector Search
-    {"sku": "PREMIUM_VECTOR_SEARCH", "cloud": "Azure", "list_price": 0.10},
-    {"sku": "PREMIUM_VECTOR_SEARCH", "cloud": "GCP", "list_price": 0.10},
+    {"sku": fn, "cloud": cloud, "list_price": price}
+    for fn, tiers in _TIER_SKU_PRICES.items()
+    for cloud, price in tiers["premium"].items()
 ]
 
 
@@ -320,12 +361,15 @@ async def get_consumption(
     user: dict = Depends(get_current_user),
 ):
     """Query Logfood for trailing 12 months consumption. Uses cache by default."""
-    account = _norm_account(account)
+    account_raw = account.strip()          # preserve original case for SFDC ID queries
+    account = _norm_account(account)       # lowercase key for cache / filenames
     ud = _udir(user)
     cache_key = f"{user['sub']}:{account}"
 
     if cache_key in _consumption_cache and not refresh:
-        return {"data": _consumption_cache[cache_key]}
+        cached_data = _consumption_cache[cache_key]
+        if cached_data:  # don't serve empty results from in-memory cache
+            return {"data": cached_data}
 
     if not refresh:
         cached = _load_json(f"consumption_{account}", ud)
@@ -337,7 +381,7 @@ async def get_consumption(
         loop = asyncio.get_event_loop()
         rows = await loop.run_in_executor(
             _executor,
-            lambda: query_consumption(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user)),
+            lambda: query_consumption(account_raw, host=_host(user), token=_token(user), warehouse_id=_warehouse(user)),
         )
         _consumption_cache[cache_key] = rows
         _save_json(f"consumption_{account}", rows, ud)
@@ -385,10 +429,12 @@ async def upload_consumption(
 @app.get("/api/sku-prices")
 async def get_sku_prices(
     account: str = Query(default="Walmart"),
+    tier: str = Query(default="premium"),
     user: dict = Depends(get_current_user),
 ):
     """Get distinct SKU + cloud + list_price from Logfood."""
-    account = _norm_account(account)
+    account_raw = account.strip()          # preserve original case for SFDC ID queries
+    account = _norm_account(account)       # lowercase key for cache / filenames
     ud = _udir(user)
     cache_key = f"{user['sub']}:{account}"
     if cache_key in _sku_price_cache:
@@ -400,7 +446,7 @@ async def get_sku_prices(
             _sku_price_cache[cache_key] = raw_rows
         else:
             try:
-                raw_rows = query_sku_prices(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user))
+                raw_rows = query_sku_prices(account_raw, host=_host(user), token=_token(user), warehouse_id=_warehouse(user))
                 _sku_price_cache[cache_key] = raw_rows
                 _save_json(f"sku_prices_{account}", raw_rows, ud)
             except Exception:
@@ -423,25 +469,24 @@ async def get_sku_prices(
         })
         clouds_set.add(cloud)
 
-    # Group by friendly_name -> cloud -> price
-    friendly_map: dict[str, dict[str, float]] = {}
-    for sp in sku_prices:
-        fn = sp["friendly_name"]
-        if fn not in friendly_map:
-            friendly_map[fn] = {}
-        # Keep the max price if multiple raw SKUs map to same friendly name + cloud
-        existing = friendly_map[fn].get(sp["cloud"], 0)
-        friendly_map[fn][sp["cloud"]] = max(existing, sp["list_price"])
+    # All tier prices keyed by tier -> friendly_name -> cloud -> price
+    # Returned in full so the frontend can apply per-UC tier without extra API calls.
+    all_tier_prices = {
+        t: {fn: dict(tiers.get(t, tiers["premium"])) for fn, tiers in _TIER_SKU_PRICES.items()}
+        for t in ("standard", "premium", "enterprise")
+    }
 
+    # friendly_skus uses premium tier for the SKU/cloud dropdown population
     friendly_skus = [
-        {"friendly_name": fn, "clouds": clouds}
-        for fn, clouds in sorted(friendly_map.items())
+        {"friendly_name": fn, "clouds": dict(tiers["premium"])}
+        for fn, tiers in sorted(_TIER_SKU_PRICES.items())
     ]
 
     return {
         "sku_prices": sku_prices,
-        "clouds": sorted(clouds_set),
+        "clouds": ["AWS", "Azure", "GCP"],  # always all 3 clouds
         "friendly_skus": friendly_skus,
+        "tier_prices": all_tier_prices,
     }
 
 
@@ -1046,7 +1091,8 @@ async def get_contract_health(
     Fetch contract burn curve data from main.gtm_gold.commit_consumption_cpq_monthly.
     Returns monthly rows aggregated by opportunity, plus a derived summary.
     """
-    account = _norm_account(account)
+    account_raw = account.strip()          # preserve original case for SFDC ID queries
+    account = _norm_account(account)       # lowercase key for cache / filenames
     if not account:
         return {"account": account, "opportunities": [], "summary": None}
 
@@ -1057,7 +1103,7 @@ async def get_contract_health(
     try:
         import asyncio as _aio
         rows = await _aio.wait_for(
-            _aio.to_thread(query_contract_health, account, host, token, warehouse_id),
+            _aio.to_thread(query_contract_health, account_raw, host, token, warehouse_id),
             timeout=45,
         )
     except TimeoutError:
@@ -1128,6 +1174,120 @@ async def get_contract_health(
             "burn_pct":        overall_burn_pct,
         },
     }
+
+
+# ── Logfood Use Cases (UCOs) ────────────────────────────────────────────────────
+_logfood_ucos_cache: dict[str, list[dict]] = {}
+
+_UCO_CSV_COLUMNS = [
+    "Id", "Name", "stage", "use_case_area", "monthly_dollar",
+    "t_shirt_size", "go_live_date", "onboarding_date",
+    "solution_architect", "status", "business_use_case", "demand_plan_stage",
+]
+
+
+@app.get("/api/logfood-use-cases")
+async def get_logfood_use_cases(
+    account: str = Query(default=""),
+    user: dict = Depends(get_current_user),
+):
+    """Fetch active U1-U4 UCOs. In demo/testing mode returns uploaded JSON data (if any)."""
+    account_raw = account.strip()          # preserve original case for Logfood SFDC ID lookup
+    account_key = _norm_account(account)   # lowercase key for cache / filenames
+    if not account_key:
+        return {"account": account_key, "use_cases": []}
+
+    ud = _udir(user)
+    cache_key = f"{user['sub']}:{account_key}"
+
+    # Check in-memory cache first
+    if cache_key in _logfood_ucos_cache:
+        return {"account": account_key, "use_cases": _logfood_ucos_cache[cache_key]}
+
+    # Check disk cache (covers uploaded data + previously fetched data)
+    stored = _load_json(f"logfood_ucos_{account_key}", ud)
+    if stored is not None:
+        _logfood_ucos_cache[cache_key] = stored
+        return {"account": account_key, "use_cases": stored}
+
+    # Demo mode with no uploaded data — return empty
+    if user.get("demo"):
+        return {"account": account_key, "use_cases": []}
+
+    host = _host(user)
+    token = _token(user)
+    warehouse_id = _warehouse(user)
+
+    try:
+        import asyncio as _aio
+        rows = await _aio.wait_for(
+            # Pass account_raw (original case) so SFDC ID resolves correctly
+            _aio.to_thread(query_logfood_use_cases, account_raw, host, token, warehouse_id),
+            timeout=60,
+        )
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="UCO query timed out (>60s)")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"UCO query failed: {str(e)}")
+
+    # Only persist non-empty results — empty results might indicate a query glitch
+    if rows:
+        _logfood_ucos_cache[cache_key] = rows
+        _save_json(f"logfood_ucos_{account_key}", rows, ud)
+    return {"account": account_key, "use_cases": rows}
+
+
+@app.post("/api/logfood-use-cases/upload")
+async def upload_logfood_use_cases(
+    account: str = Query(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Upload a JSON array of UCOs for demo/testing mode.
+    Each object must have: Id, Name, stage (U1-U4)
+    Optional fields: use_case_area, monthly_dollar, t_shirt_size, go_live_date,
+                     onboarding_date, solution_architect, status, business_use_case,
+                     demand_plan_stage
+    """
+    account_key = _norm_account(account)
+    ud = _udir(user)
+    content = await file.read()
+    try:
+        rows_raw = json.loads(content)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+    if not isinstance(rows_raw, list) or len(rows_raw) == 0:
+        raise HTTPException(status_code=400, detail="File must be a non-empty JSON array")
+
+    required = {"Id", "Name", "stage"}
+    missing = required - set(rows_raw[0].keys())
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {missing}")
+
+    rows = []
+    for r in rows_raw:
+        monthly = r.get("monthly_dollar")
+        rows.append({
+            "Id": str(r.get("Id", "")).strip(),
+            "Name": str(r.get("Name", "")).strip(),
+            "stage": str(r.get("stage", "")).strip().upper(),
+            "use_case_area": r.get("use_case_area") or None,
+            "monthly_dollar": float(monthly) if monthly is not None else None,
+            "t_shirt_size": r.get("t_shirt_size") or None,
+            "go_live_date": r.get("go_live_date") or None,
+            "onboarding_date": r.get("onboarding_date") or None,
+            "solution_architect": r.get("solution_architect") or None,
+            "status": r.get("status") or None,
+            "business_use_case": r.get("business_use_case") or None,
+            "demand_plan_stage": r.get("demand_plan_stage") or None,
+        })
+
+    cache_key = f"{user['sub']}:{account_key}"
+    _logfood_ucos_cache[cache_key] = rows
+    _save_json(f"logfood_ucos_{account_key}", rows, ud)
+
+    return {"status": "ok", "account": account_key, "records": len(rows)}
 
 
 # ── Setup: status ──────────────────────────────────────────────────────────────
