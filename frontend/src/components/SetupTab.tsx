@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { AccountConfig } from '../App';
-import { uploadDomainMap, fetchDomainMap, fetchWorkspaceList } from '../api';
+import { uploadDomainMap, fetchDomainMap, fetchWorkspaceList, uploadLogfoodUseCases } from '../api';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -873,6 +873,27 @@ function SmokeTestStep({
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // UCO upload state
+  const [ucoFile, setUcoFile] = useState<File | null>(null);
+  const [ucoLoading, setUcoLoading] = useState(false);
+  const [ucoResult, setUcoResult] = useState<{ records: number } | null>(null);
+  const [ucoError, setUcoError] = useState('');
+  const ucoFileRef = useRef<HTMLInputElement>(null);
+
+  const handleUcoUpload = async () => {
+    const acct = result?.account || accountName.trim();
+    if (!acct || !ucoFile) return;
+    setUcoLoading(true); setUcoError(''); setUcoResult(null);
+    try {
+      const data = await uploadLogfoodUseCases(acct, ucoFile);
+      setUcoResult({ records: data.records });
+    } catch (e: any) {
+      setUcoError(e.message || 'Upload failed');
+    } finally {
+      setUcoLoading(false);
+    }
+  };
+
   const handleLoad = async () => {
     if (!accountName.trim() || !file) return;
     setLoading(true);
@@ -945,8 +966,19 @@ function SmokeTestStep({
             </svg>
             Download sample domain map CSV (Kroger workspace → domain mapping)
           </a>
+          <a
+            href="https://drive.google.com/file/d/1ECQnIcErt96DE35rBP8dOea154pWFhJe/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-blue-700 hover:text-blue-900 hover:underline"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download sample Salesforce UCOs JSON (Kroger use cases)
+          </a>
         </div>
-        <p className="text-[11px] text-blue-600">Download both files, then upload below. Use <strong>Kroger</strong> as the account name.</p>
+        <p className="text-[11px] text-blue-600">Download all three files, then upload below. Use <strong>Kroger</strong> as the account name.</p>
       </div>
 
       {/* Account name */}
@@ -1060,6 +1092,58 @@ function SmokeTestStep({
             Required for domain-level views in Historical and Account Overview tabs.
           </p>
           <DomainMapUpload account={result.account} />
+        </div>
+      )}
+
+      {/* UCO upload — shown after successful data load */}
+      {result && (
+        <div className="border-t border-slate-200 pt-5 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-1">
+              Salesforce Use Cases (UCOs) (Optional)
+            </p>
+            <p className="text-sm text-slate-500">
+              Upload a UCO JSON to populate the Logfood Use Cases panel in Scenario Builder.
+              Required fields: <code className="bg-slate-100 px-1 rounded text-xs">Id</code>, <code className="bg-slate-100 px-1 rounded text-xs">Name</code>, <code className="bg-slate-100 px-1 rounded text-xs">stage</code> (U1–U4).
+            </p>
+          </div>
+          <div
+            onClick={() => ucoFileRef.current?.click()}
+            className="flex items-center gap-3 border-2 border-dashed border-slate-300 hover:border-[#FF3621] rounded-lg px-4 py-3 cursor-pointer transition-colors"
+          >
+            <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            <span className="text-sm text-slate-500">
+              {ucoFile ? <span className="text-slate-800 font-medium">{ucoFile.name}</span> : 'Click to select UCO JSON…'}
+            </span>
+          </div>
+          <input
+            ref={ucoFileRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={e => { setUcoFile(e.target.files?.[0] ?? null); setUcoResult(null); setUcoError(''); }}
+          />
+          {ucoError && <p className="text-sm text-red-600">{ucoError}</p>}
+          {ucoResult && (
+            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              ✓ Loaded <strong>{ucoResult.records}</strong> use cases. Switch to Scenario Builder → Logfood Use Cases to see them.
+            </p>
+          )}
+          <button
+            onClick={handleUcoUpload}
+            disabled={ucoLoading || !ucoFile}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {ucoLoading ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            ) : null}
+            {ucoLoading ? 'Uploading…' : 'Upload UCOs'}
+          </button>
         </div>
       )}
     </div>
