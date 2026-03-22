@@ -219,7 +219,7 @@ function buildProjectionSheetMulti(
   const INFO_COLS = 2; // SKU name + $/DBU columns after label
   const totalCols = 1 + INFO_COLS + 36 + 4;
 
-  const ws = wb.addWorksheet(`S${scenarioNum} — Projection`, {
+  const ws = wb.addWorksheet(`S${scenarioNum}_Projection`, {
     properties: { tabColor: { argb: 'FF' + sc.bg } },
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
   });
@@ -653,7 +653,7 @@ async function buildSummarySheet(
     const sNum = (si + 1) as 1 | 2 | 3;
     const sc = SCENARIO_COLORS[sNum];
     const projMap = projRowMaps[sNum];
-    const sn = projMap.sheetName; // e.g. "S1 — Projection"
+    const sn = projMap.sheetName; // e.g. "S1_Projection"
     const desc = opts.accountsData[0]?.scenariosData[si]?.assumptions || `Scenario ${sNum}`;
 
     // Scenario header band
@@ -1405,7 +1405,25 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
     buildDomainBaselineSheet(wb, ad);
   }
 
-  const buffer = await wb.xlsx.writeBuffer();
+  const rawBuffer = await wb.xlsx.writeBuffer();
+
+  // ExcelJS XML-escapes single quotes in <f> tags (e.g. &apos;Sheet&apos;!A1).
+  // Excel's formula parser reads raw XML content and cannot decode XML entities,
+  // so cross-sheet references break. Post-process the ZIP to unescape them.
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(rawBuffer);
+  const wsFiles = Object.keys(zip.files).filter(
+    n => n.startsWith('xl/worksheets/') && n.endsWith('.xml')
+  );
+  await Promise.all(wsFiles.map(async name => {
+    const xml = await zip.files[name].async('string');
+    const fixed = xml.replace(/<f([^>]*)>([^<]*)<\/f>/g,
+      (_m, attrs, formula) => `<f${attrs}>${formula.replace(/&apos;/g, "'")}<\/f>`
+    );
+    zip.file(name, fixed);
+  }));
+  const buffer = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
