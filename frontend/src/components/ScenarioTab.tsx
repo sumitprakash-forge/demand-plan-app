@@ -213,6 +213,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [customSkuError, setCustomSkuError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [expandedBaseline, setExpandedBaseline] = useState(true);
   const [expandedOverrides, setExpandedOverrides] = useState(false);
@@ -394,6 +395,18 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
   };
 
   const handleSave = async () => {
+    // Validate custom SKU rows have a $/DBU rate before saving
+    for (const uc of newUseCases) {
+      for (let idx = 0; idx < uc.skuBreakdown.length; idx++) {
+        const alloc = uc.skuBreakdown[idx];
+        if (alloc.overridePrice !== undefined && !(alloc.overridePrice > 0)) {
+          const msg = `"${uc.name || 'Use Case'}" has a custom SKU row (row ${idx + 1}) with no $/DBU rate. Please enter a rate before saving.`;
+          setCustomSkuError(msg);
+          return;
+        }
+      }
+    }
+    setCustomSkuError(null);
     setSaving(true);
     setSaved(false);
     try {
@@ -749,12 +762,17 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          {saved && <span className="text-green-600 text-sm font-medium">Saved!</span>}
-          <button onClick={handleSave} disabled={saving}
-            className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save Scenario'}
-          </button>
+        <div className="flex flex-col items-end gap-1">
+          {customSkuError && (
+            <span className="text-red-600 text-xs font-medium max-w-xs text-right">{customSkuError}</span>
+          )}
+          <div className="flex items-center gap-3">
+            {saved && <span className="text-green-600 text-sm font-medium">Saved!</span>}
+            <button onClick={handleSave} disabled={saving}
+              className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Scenario'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1656,10 +1674,10 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
                                           <input
                                             type="number" min={0} step={0.01}
                                             value={alloc.overridePrice ?? ''}
-                                            placeholder="0.00"
-                                            onChange={(e) => updateSkuRow(uc.id, idx, 'overridePrice', parseFloat(e.target.value) || 0)}
-                                            className="w-16 border border-amber-300 rounded px-1 py-0.5 text-xs text-right bg-white"
-                                            title="Custom $/DBU price"
+                                            placeholder="required"
+                                            onChange={(e) => { updateSkuRow(uc.id, idx, 'overridePrice', parseFloat(e.target.value) || 0); setCustomSkuError(null); }}
+                                            className={`w-16 border rounded px-1 py-0.5 text-xs text-right bg-white ${!(alloc.overridePrice! > 0) ? 'border-red-400 bg-red-50' : 'border-amber-300'}`}
+                                            title="Custom $/DBU price — required"
                                           />
                                           <span className="text-amber-500 text-[10px]">*</span>
                                         </div>
