@@ -121,6 +121,22 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
     }
   }, [accounts]);
 
+  // On startup, check each saved account for cached data and restore loadStatus
+  useEffect(() => {
+    const validAccounts = accounts.filter(a => (a.sfdc_id || a.name).trim());
+    if (validAccounts.length === 0) return;
+    validAccounts.forEach(async (acct) => {
+      const key = acct.sfdc_id || acct.name;
+      try {
+        const res = await fetchConsumption(key); // no refresh — uses server cache/disk
+        if (res.data && res.data.length > 0) {
+          setLoadStatus(prev => ({ ...prev, [key]: 'ok' }));
+        }
+      } catch { /* ignore — account just won't show as loaded */ }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
+
   const updateAccount = (index: number, field: keyof AccountConfig, value: string) => {
     setAccounts(prev => prev.map((a, i) => i === index ? { ...a, [field]: value } : a));
   };

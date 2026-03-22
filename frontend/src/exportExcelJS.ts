@@ -111,6 +111,18 @@ function histMonthLabel(yyyymm: string): string {
   return `${MONTH_NAMES[m - 1]}_${y}`;
 }
 
+// ─── Excel column letter helper ───────────────────────────────────────────────
+// Converts 1-based column index to Excel letter(s): 1→A, 26→Z, 27→AA, etc.
+function colLetter(n: number): string {
+  let s = '';
+  while (n > 0) {
+    n--;
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  }
+  return s;
+}
+
 // ─── Style helpers ────────────────────────────────────────────────────────────
 
 function rgb(hex: string): Partial<ExcelJS.Color> {
@@ -195,7 +207,8 @@ function buildProjectionSheetMulti(
   accountsData: AccountExportData[]
 ) {
   const sc = SCENARIO_COLORS[scenarioNum];
-  const totalCols = 1 + 36 + 4;
+  const INFO_COLS = 2; // SKU name + $/DBU columns after label
+  const totalCols = 1 + INFO_COLS + 36 + 4;
 
   const ws = wb.addWorksheet(`S${scenarioNum} — Projection`, {
     properties: { tabColor: { argb: 'FF' + sc.bg } },
@@ -203,7 +216,9 @@ function buildProjectionSheetMulti(
   });
 
   ws.columns = [
-    { key: 'label', width: 40 },
+    { key: 'label', width: 30 },
+    { key: 'sku',   width: 26 },  // SKU name (for SKU sub-rows)
+    { key: 'dbu',   width: 9  },  // $/DBU rate
     ...Array.from({ length: 36 }, (_, i) => ({ key: `m${i + 1}`, width: 9 })),
     { key: 'y1', width: 14 },
     { key: 'y2', width: 14 },
@@ -235,7 +250,7 @@ function buildProjectionSheetMulti(
     ? `Y3 (${projMonthLabel(25, firstCsd)}–${projMonthLabel(36, firstCsd)})`
     : 'Y3 Total';
 
-  const hrow = ws.addRow(['', ...monthLabels, y1Label, y2Label, y3Label, 'Grand Total']);
+  const hrow = ws.addRow(['', 'SKU', '$/DBU', ...monthLabels, y1Label, y2Label, y3Label, 'Grand Total']);
   hrow.height = 30;
   hrow.eachCell({ includeEmpty: true }, (cell, colNum) => {
     cell.style = {
@@ -244,12 +259,12 @@ function buildProjectionSheetMulti(
       alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
       border: { right: { style: 'hair', color: rgb('AAAAAA') } },
     };
-    if (colNum > 37) {
+    if (colNum > 39) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('2D4E8A') };
       cell.font = { bold: true, color: rgb(HEADER_FG), size: 9, name: 'Calibri' };
     }
   });
-  [13, 25, 37].forEach(col => {
+  [15, 27, 39].forEach(col => {
     const c = hrow.getCell(col + 1);
     c.border = { ...c.border, right: { style: 'medium', color: rgb('FFFFFF') } };
   });
@@ -263,17 +278,19 @@ function buildProjectionSheetMulti(
     label: string,
     months: number[],
     style: Partial<ExcelJS.Style>,
-    indent = 0
+    indent = 0,
+    infoPct: string | number = '',
+    infoDbu: string | number = ''
   ) => {
     const y1 = ucYearSlice(months, 0);
     const y2 = ucYearSlice(months, 1);
     const y3 = ucYearSlice(months, 2);
     const grand = y1 + y2 + y3;
-    const r = ws.addRow([label, ...months, y1, y2, y3, grand]);
+    const r = ws.addRow([label, infoPct, infoDbu, ...months, y1, y2, y3, grand]);
     r.height = 17;
     r.eachCell({ includeEmpty: true }, (cell, colNum) => {
       Object.assign(cell, { style: { ...cell.style, ...style } });
-      if (colNum > 1 && typeof cell.value === 'number') {
+      if (colNum > 3 && typeof cell.value === 'number') {
         cell.numFmt = USD_FMT;
         cell.alignment = { horizontal: 'right', vertical: 'middle' };
       }
@@ -283,7 +300,17 @@ function buildProjectionSheetMulti(
       alignment: { vertical: 'middle', indent },
       font: { ...(style.font as any), name: 'Calibri', size: 10 },
     };
-    [13, 25, 37].forEach(col => {
+    // Info cols 2-3: right-align
+    if (infoPct !== '') {
+      r.getCell(2).alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+      r.getCell(2).font = { ...(style.font as any), name: 'Calibri', size: 9 };
+    }
+    if (infoDbu !== '') {
+      r.getCell(3).alignment = { horizontal: 'right', vertical: 'middle' };
+      r.getCell(3).numFmt = '$#,##0.00';
+      r.getCell(3).font = { ...(style.font as any), name: 'Calibri', size: 9 };
+    }
+    [15, 27, 39].forEach(col => {
       const c = r.getCell(col + 1);
       c.border = { ...c.border, left: { style: 'thin', color: rgb('CCCCCC') } };
     });
@@ -297,14 +324,15 @@ function buildProjectionSheetMulti(
     months: number[],
     bgColor: string,
     indent = 1,
-    dbuRateOverride?: number
+    dbuRateOverride?: number,
+    infoLabel = ''
   ) => {
     const rate = dbuRateOverride !== undefined ? dbuRateOverride : DBU_RATE;
     const dbuMonths = months.map(v => Math.round(v * rate));
     const y1 = dbuMonths.slice(0, 12).reduce((s, v) => s + v, 0);
     const y2 = dbuMonths.slice(12, 24).reduce((s, v) => s + v, 0);
     const y3 = dbuMonths.slice(24, 36).reduce((s, v) => s + v, 0);
-    const r = ws.addRow([label, ...dbuMonths, y1, y2, y3, y1 + y2 + y3]);
+    const r = ws.addRow([label, infoLabel, '', ...dbuMonths, y1, y2, y3, y1 + y2 + y3]);
     r.height = 13;
     r.eachCell({ includeEmpty: true }, (cell, colNum) => {
       cell.style = {
@@ -312,11 +340,13 @@ function buildProjectionSheetMulti(
         fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(bgColor) },
         alignment: colNum === 1
           ? { vertical: 'middle', indent }
+          : colNum === 2
+          ? { horizontal: 'left', vertical: 'middle', indent: 1 }
           : { horizontal: 'right', vertical: 'middle' },
       };
-      if (colNum > 1 && typeof cell.value === 'number') cell.numFmt = '#,##0';
+      if (colNum > 3 && typeof cell.value === 'number') cell.numFmt = '#,##0';
     });
-    [13, 25, 37].forEach(col => {
+    [15, 27, 39].forEach(col => {
       const c = r.getCell(col + 1);
       c.border = { ...c.border, left: { style: 'thin', color: rgb('CCCCCC') } };
     });
@@ -371,7 +401,7 @@ function buildProjectionSheetMulti(
     // Amber fill for overridden baseline cells
     if (overriddenMonths.size > 0) {
       overriddenMonths.forEach(mi => {
-        const cell = baselineRow.getCell(mi + 2); // col 1 = label, col 2 = M1 (index 0)
+        const cell = baselineRow.getCell(mi + 4); // col 1 = label, cols 2-3 = info, col 4 = M1
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('FEF3C7') };
         cell.font = { bold: true, size: 10, name: 'Calibri', color: rgb('92400E') };
         cell.border = { ...cell.border, left: { style: 'medium', color: rgb('F59E0B') } };
@@ -380,7 +410,7 @@ function buildProjectionSheetMulti(
 
     // Collect UC data so we can reuse it for the DBU group
     const ucMonthTotals = new Array(36).fill(0);
-    type UcItem = { label: string; months: number[]; bgIdx: number; rate: number; skus: Array<{ label: string; months: number[]; rate: number }> };
+    type UcItem = { label: string; months: number[]; bgIdx: number; rate: number; skus: Array<{ label: string; skuName: string; months: number[]; rate: number }> };
     const ucItems: UcItem[] = [];
 
     activeUseCases.forEach((uc, idx) => {
@@ -399,21 +429,26 @@ function buildProjectionSheetMulti(
         if (totalDollar > 0 && totalDbu > 0) ucRate = totalDbu / totalDollar;
       }
 
-      const skus: Array<{ label: string; months: number[]; rate: number }> = [];
+      const skus: Array<{ label: string; skuName: string; months: number[]; rate: number }> = [];
       if (!uc.upliftOnly && uc.skuBreakdown?.length) {
         uc.skuBreakdown.forEach(sku => {
           const skuMonths = mp.map(v => v * (sku.percentage / 100));
           const skuRate = (sku.dollarDbu > 0 && sku.dbus > 0) ? sku.dbus / sku.dollarDbu : DBU_RATE;
-          skus.push({ label: `    └─ ${sku.sku} (${sku.percentage}%)`, months: skuMonths, rate: skuRate });
+          const pricePerDbu = sku.overridePrice !== undefined
+            ? (sku.overridePrice ?? 0)
+            : (sku.dbus > 0 ? sku.dollarDbu / sku.dbus : 0);
+          skus.push({ label: `    └─ ${sku.sku}`, skuName: sku.sku, months: skuMonths, rate: skuRate });
           addDataRow(
-            `    └─ ${sku.sku} (${sku.percentage}%)`,
+            '',                          // col 1: empty — SKU name lives in col 2
             skuMonths,
             {
               font: { size: 9, name: 'Calibri', color: rgb('6B7280'), italic: true },
               fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('F9FAFB') },
               alignment: { vertical: 'middle' },
             },
-            4
+            0,
+            `└─ ${sku.sku}`,             // col 2: SKU name
+            pricePerDbu                  // col 3: $/DBU
           );
         });
       }
@@ -421,12 +456,25 @@ function buildProjectionSheetMulti(
     });
 
     if (activeUseCases.length > 0) {
-      addDataRow('New Use Cases Subtotal', ucMonthTotals, { ...totalStyle(TOTAL_BG, TOTAL_FG) });
+      const dbuSubRow = addDataRow('New Use Cases Subtotal', ucMonthTotals, { ...totalStyle(TOTAL_BG, TOTAL_FG) });
+      const gtRow = addDataRow(
+        `Grand Total (${ad.accountName})`, totalMonths,
+        { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } }
+      );
+      const baselineRN = baselineRow.number;
+      const subtotalRN = dbuSubRow.number;
+      for (let c = 4; c <= 43; c++) {
+        const col = colLetter(c);
+        const cell = gtRow.getCell(c);
+        const precomputed = typeof cell.value === 'number' ? cell.value : 0;
+        cell.value = { formula: `=${col}${baselineRN}+${col}${subtotalRN}`, result: precomputed };
+      }
+    } else {
+      addDataRow(
+        `Grand Total (${ad.accountName})`, totalMonths,
+        { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } }
+      );
     }
-    addDataRow(
-      `Grand Total (${ad.accountName})`, totalMonths,
-      { ...totalStyle(GRAND_BG, '0D2B5A'), font: { bold: true, size: 10, name: 'Calibri', color: rgb('0D2B5A') } }
-    );
 
     // ── Group 2: DBU MoM ─────────────────────────────────────────────────────
     ws.addRow([]);
@@ -435,7 +483,7 @@ function buildProjectionSheetMulti(
     const baselineDbuRow = addDbuRow('Baseline (Existing Consumption) — DBUs', baselineMonths, 'F3F4F6', 0);
     if (overriddenMonths.size > 0) {
       overriddenMonths.forEach(mi => {
-        const cell = baselineDbuRow.getCell(mi + 2);
+        const cell = baselineDbuRow.getCell(mi + 4);
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: rgb('FEF3C7') };
         cell.font = { size: 8, name: 'Calibri', italic: true, color: rgb('92400E') };
       });
@@ -443,13 +491,24 @@ function buildProjectionSheetMulti(
 
     ucItems.forEach(({ label, months, bgIdx, rate, skus }) => {
       addDbuRow(`${label} — DBUs`, months, bgIdx % 2 === 0 ? 'F9FAFB' : 'FFFFFF', 1, rate);
-      skus.forEach(sku => addDbuRow(`${sku.label} — DBUs`, sku.months, 'F9FAFB', 4, sku.rate));
+      skus.forEach(sku => addDbuRow('', sku.months, 'F9FAFB', 0, sku.rate, `└─ ${sku.skuName} — DBUs`));
     });
 
     if (activeUseCases.length > 0) {
-      addDbuRow('New Use Cases Subtotal — DBUs', ucMonthTotals, TOTAL_BG, 0);
+      const dbuSubRow = addDbuRow('New Use Cases Subtotal — DBUs', ucMonthTotals, TOTAL_BG, 0);
+      const dbuGtRow = addDbuRow(`Grand Total (${ad.accountName}) — DBUs`, totalMonths, GRAND_BG, 0);
+      const dbuBaseRN = baselineDbuRow.number;
+      const dbuSubRN = dbuSubRow.number;
+      for (let c = 4; c <= 43; c++) {
+        const col = colLetter(c);
+        const cell = dbuGtRow.getCell(c);
+        const precomputed = typeof cell.value === 'number' ? cell.value : 0;
+        cell.value = { formula: `=${col}${dbuBaseRN}+${col}${dbuSubRN}`, result: precomputed };
+        if (c > 3) cell.numFmt = '#,##0';
+      }
+    } else {
+      addDbuRow(`Grand Total (${ad.accountName}) — DBUs`, totalMonths, GRAND_BG, 0);
     }
-    addDbuRow(`Grand Total (${ad.accountName}) — DBUs`, totalMonths, GRAND_BG, 0);
 
     // ── Year Summary block ────────────────────────────────────────────────────
     const csd = ad.contractStartDate || '';
@@ -793,19 +852,21 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   const y2Label = csd ? `Y2 (${projMonthLabel(13, csd)}–${projMonthLabel(24, csd)})` : 'Year 2';
   const y3Label = csd ? `Y3 (${projMonthLabel(25, csd)}–${projMonthLabel(36, csd)})` : 'Year 3';
 
-  // Columns: Name | Domain | Size Tier | SS $/mo | Workload Type | Cloud | Onboard | Live | Ramp Duration | Ramp | S1|S2|S3 | Y1 | Y2 | Y3 | Total | Assumptions
+  // Columns: Name | Domain | Size Tier | DBUs/mo | $/mo | $/DBU | Workload Type | Cloud | Onboard | Live | Ramp Duration | Ramp | S1|S2|S3 | Y1 | Y2 | Y3 | Total | Assumptions
   ws.columns = [
     { key: 'name',     width: 34 }, { key: 'domain',   width: 22 }, { key: 'tier',    width: 18 },
-    { key: 'ss',       width: 14 }, { key: 'wltype',   width: 18 }, { key: 'cloud',   width: 10 },
+    { key: 'dbus',     width: 14 }, { key: 'ssmo',     width: 14 }, { key: 'dbuprice',width: 10 },
+    { key: 'wltype',   width: 18 }, { key: 'cloud',    width: 10 },
     { key: 'onboard',  width: 16 }, { key: 'live',     width: 16 }, { key: 'rampmo',  width: 14 },
     { key: 'ramp',     width: 14 }, { key: 's1',       width: 5  }, { key: 's2',      width: 5  },
     { key: 's3',       width: 5  }, { key: 'y1',       width: 18 }, { key: 'y2',      width: 18 },
     { key: 'y3',       width: 18 }, { key: 'total',    width: 18 }, { key: 'notes',   width: 60 },
   ];
 
-  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with full configuration, SKU breakdown, description, and assumptions', 18);
+  addSheetTitle(ws, `${ad.accountName} — Use Case Details`, 'All use cases with full configuration, SKU breakdown, description, and assumptions', 20);
   const hrow = ws.addRow([
-    'Name', 'Domain', 'Size Tier', 'DBUs/mo (steady state)', 'Workload Type', 'Cloud',
+    'Name', 'Domain', 'Size Tier', 'DBUs/mo (steady state)', '$/mo (Steady State)', '$/DBU (blended)',
+    'Workload Type', 'Cloud',
     'Onboard Month', 'Live Month', 'Ramp Duration (mo)', 'Ramp Type', 'S1', 'S2', 'S3',
     y1Label, y2Label, y3Label, 'Grand Total', 'Description / Assumptions',
   ]);
@@ -822,13 +883,16 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
         ? uc.skuBreakdown.reduce((s, a) => s + a.dbus, 0)
         : Math.round(uc.steadyStateDbu / 0.20);
     const ucDisplayName = uc.upliftOnly ? `${uc.name}  [$ uplift only]` : uc.name;
+    const blendedDbuPerDollar = estDbus > 0 ? uc.steadyStateDbu / estDbus : 0;
     const ucRow = ws.addRow([
       ucDisplayName,
       uc.domain,
       sizeTierLabel(uc.steadyStateDbu),
-      estDbus,                   // col 4: DBUs/mo
-      uc.workloadType || '—',    // col 5: Workload Type ($/mo shown in Y1/Y2/Y3 columns)
-      uc.cloud || '',
+      estDbus,                                         // col 4: DBUs/mo
+      uc.upliftOnly ? 0 : uc.steadyStateDbu,           // col 5: $/mo (steady state)
+      uc.upliftOnly ? 0 : blendedDbuPerDollar,         // col 6: $/DBU (blended)
+      uc.workloadType || '—',                          // col 7: Workload Type
+      uc.cloud || '',                                  // col 8: Cloud
       projMonthLabel(uc.onboardingMonth, csd),
       projMonthLabel(uc.liveMonth, csd),
       rampDuration,
@@ -840,14 +904,16 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
     applyRowStyle(ucRow, dataStyle(ucCount % 2 === 0));
     ucRow.getCell(1).font = { bold: true, size: 10, name: 'Calibri' };
     ucRow.getCell(4).numFmt = '#,##0';   // DBUs/mo — integer format
-    [14, 15, 16, 17].forEach(col => {
+    ucRow.getCell(5).numFmt = USD_FMT;   // $/mo
+    ucRow.getCell(6).numFmt = '$#,##0.00'; // $/DBU blended
+    [16, 17, 18, 19].forEach(col => {
       const c = ucRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
     });
-    [11, 12, 13].forEach(col => {
+    [13, 14, 15].forEach(col => {
       ucRow.getCell(col).alignment = { horizontal: 'center', vertical: 'middle' };
       ucRow.getCell(col).font = { color: rgb('059669'), bold: true, name: 'Calibri', size: 11 };
     });
-    ucRow.getCell(18).alignment = { wrapText: true, vertical: 'top' };
+    ucRow.getCell(20).alignment = { wrapText: true, vertical: 'top' };
 
     // SKU breakdown sub-rows
     if (uc.skuBreakdown?.length) {
@@ -864,8 +930,8 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
           `${sku.percentage}% of UC`,
           Math.round(sku.dbus),
           sku.dollarDbu,
-          priceLabel,
-          '', '', '', '', '', '', '',
+          pricePerDbu,
+          '', '', '', '', '', '', '', '', '',
           yT[0] * sku.percentage / 100,
           yT[1] * sku.percentage / 100,
           yT[2] * sku.percentage / 100,
@@ -881,15 +947,17 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
           };
         });
         skuRow.getCell(4).numFmt = '#,##0';
-        [5, 14, 15, 16, 17].forEach(col => {
+        skuRow.getCell(5).numFmt = USD_FMT;
+        skuRow.getCell(6).numFmt = '$#,##0.00';
+        [16, 17, 18, 19].forEach(col => {
           const c = skuRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
         });
         skuRow.getCell(1).alignment = { vertical: 'middle', indent: 2 };
-        skuRow.getCell(18).alignment = { vertical: 'middle', wrapText: true };
+        skuRow.getCell(20).alignment = { vertical: 'middle', wrapText: true };
       });
       // Footnote row if any custom prices used
       if (hasCustomPrice) {
-        const noteRow = ws.addRow(['    * Custom price — SKU not yet in standard price list', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+        const noteRow = ws.addRow(['    * Custom price — SKU not yet in standard price list', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
         noteRow.height = 14;
         noteRow.eachCell({ includeEmpty: true }, (cell) => {
           cell.style = {
@@ -916,6 +984,8 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
           '',
           `${period.months.length} months`,
           '',
+          periodTotal,
+          '',
           dbuLabel,
           monthsLabel,
           '', '', '', '', '', '', '',
@@ -930,7 +1000,8 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
             alignment: { vertical: 'middle' },
           };
         });
-        [14, 15, 16, 17].forEach(col => {
+        adhocRow.getCell(5).numFmt = USD_FMT;
+        [16, 17, 18, 19].forEach(col => {
           const c = adhocRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
         });
         adhocRow.getCell(1).alignment = { vertical: 'middle', indent: 2 };
@@ -944,7 +1015,8 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   const totRow = ws.addRow([
     'TOTAL', '', '',
     ad.allUseCases.reduce((s, uc) => s + (uc.upliftOnly ? 0 : (uc.skuBreakdown?.length ? uc.skuBreakdown.reduce((a, sk) => a + sk.dbus, 0) : Math.round(uc.steadyStateDbu / 0.20))), 0),
-    '', '', '', '', '', '', '', '', '',
+    ad.allUseCases.reduce((s, uc) => s + (uc.upliftOnly ? 0 : uc.steadyStateDbu), 0),
+    '', '', '', '', '', '', '', '', '', '',
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(0, 12).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(12, 24).reduce((a, v) => a + v, 0), 0),
     ad.allUseCases.reduce((s, uc) => s + uc.monthlyProjection.slice(24, 36).reduce((a, v) => a + v, 0), 0),
@@ -953,7 +1025,8 @@ function buildUseCaseDetailsSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   ]);
   applyRowStyle(totRow, totalStyle(GRAND_BG));
   totRow.getCell(4).numFmt = '#,##0';
-  [14, 15, 16, 17].forEach(col => {
+  totRow.getCell(5).numFmt = USD_FMT;
+  [16, 17, 18, 19].forEach(col => {
     const c = totRow.getCell(col); if (typeof c.value === 'number') c.numFmt = USD_FMT;
   });
 

@@ -486,7 +486,8 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                         <table className="w-full">
                           <thead>
                             <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                              <td className="py-2 pr-4" style={{ width: '35%' }}>$DBUs List</td>
+                              <td className="py-2 pr-2" style={{ width: '110px' }}>Type</td>
+                              <td className="py-2 pr-4">$DBUs List</td>
                               {Array.from({ length: numYears }, (_, yi) => (
                                 <td key={yi} className="py-2 text-right text-xs">{getYearLabel(csd, yi)}</td>
                               ))}
@@ -495,13 +496,13 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                           </thead>
                           <tbody>
                             <tr className="border-t bg-gray-50">
-                              <td colSpan={numYears + 2} className="py-2 text-sm font-semibold text-gray-700">
+                              <td colSpan={numYears + 3} className="py-2 text-sm font-semibold text-gray-700">
                                 Use Case Areas ({acct.name.toUpperCase()})
                               </td>
                             </tr>
                             {baselineRow && (
                               <tr className="border-t hover:bg-gray-50">
-                                <td className="py-2 pr-4 text-sm text-gray-800">Existing - Live Use Cases</td>
+                                <td colSpan={2} className="py-2 pr-4 text-sm font-medium text-gray-800">Existing — Live Use Cases</td>
                                 {Array.from({ length: numYears }, (_, yi) => (
                                   <td key={yi} className="py-2 text-sm text-right">{formatCurrency(baselineRow[`year${yi + 1}`] || 0)}</td>
                                 ))}
@@ -510,7 +511,10 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                             )}
                             {useCaseRows.map((row: any, ri: number) => (
                               <tr key={ri} className="border-t hover:bg-gray-50">
-                                <td className="py-2 pr-4 text-sm text-gray-600 pl-2">
+                                <td className="py-2 pr-2">
+                                  <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 whitespace-nowrap">New Use Case</span>
+                                </td>
+                                <td className="py-2 pr-4 text-sm text-gray-700">
                                   {row.use_case_area.replace(/^\s*↳\s*/, '')}
                                 </td>
                                 {Array.from({ length: numYears }, (_, yi) => (
@@ -520,7 +524,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                               </tr>
                             ))}
                             <tr className="border-t-2 border-gray-300 bg-blue-50 font-bold">
-                              <td className="py-2 pr-4 text-sm">Total $DBUs (DBCU at List)</td>
+                              <td colSpan={2} className="py-2 pr-4 text-sm">Total $DBUs (DBCU at List)</td>
                               {Array.from({ length: numYears }, (_, yi) => (
                                 <td key={yi} className="py-2 text-sm text-right">{formatCurrency(gt?.[`year${yi + 1}`] || 0)}</td>
                               ))}
@@ -555,7 +559,8 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                             <table className="w-full">
                               <thead>
                                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                                  <td className="py-2 px-3" style={{ width: '35%' }}>$DBUs List</td>
+                                  <td className="py-2 px-3" style={{ width: '90px' }}>Type</td>
+                                  <td className="py-2 px-3">$DBUs List</td>
                                   {Array.from({ length: numYears }, (_, yi) => (
                                     <td key={yi} className="py-2 text-right text-xs">{getYearLabel(csd, yi)}</td>
                                   ))}
@@ -565,7 +570,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                               <tbody>
                                 {baselineRow && (
                                   <tr className="border-t hover:bg-gray-50">
-                                    <td className="py-2 px-3 text-sm text-gray-800">Existing - Live Use Cases</td>
+                                    <td colSpan={2} className="py-2 px-3 text-sm font-medium text-gray-800">Existing — Live Use Cases</td>
                                     {Array.from({ length: numYears }, (_, yi) => (
                                       <td key={yi} className="py-2 text-sm text-right">{formatCurrency(baselineRow[`year${yi + 1}`] || 0)}</td>
                                     ))}
@@ -574,7 +579,10 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                                 )}
                                 {useCaseRows.map((row: any, ri: number) => (
                                   <tr key={ri} className="border-t hover:bg-gray-50">
-                                    <td className="py-2 px-3 text-sm text-gray-600 pl-4">
+                                    <td className="py-2 px-3">
+                                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 whitespace-nowrap">New Use Case</span>
+                                    </td>
+                                    <td className="py-2 px-3 text-sm text-gray-700">
                                       {row.use_case_area.replace(/^\s*↳\s*/, '')}
                                     </td>
                                     {Array.from({ length: numYears }, (_, yi) => (
@@ -584,7 +592,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                                   </tr>
                                 ))}
                                 <tr className="border-t-2 font-bold" style={{ backgroundColor: `${acctColor}12` }}>
-                                  <td className="py-2 px-3 text-sm" style={{ color: acctColor }}>Total</td>
+                                  <td colSpan={2} className="py-2 px-3 text-sm" style={{ color: acctColor }}>Total</td>
                                   {Array.from({ length: numYears }, (_, yi) => (
                                     <td key={yi} className="py-2 text-sm text-right">{formatCurrency(gt?.[`year${yi + 1}`] || 0)}</td>
                                   ))}

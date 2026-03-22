@@ -158,28 +158,45 @@ def _save_config():
 def _preload_caches():
     """Preload all JSON file caches into memory on startup."""
     count = 0
-    for f in DATA_DIR.glob("*.json"):
-        try:
-            with open(f) as fh:
-                data = json.load(fh)
-            name = f.stem  # e.g., "consumption_Kroger"
-            if name.startswith("consumption_") and isinstance(data, list) and len(data) > 0:
-                key = name[len("consumption_"):]
-                _consumption_cache[key] = data
-                count += 1
-            elif name.startswith("sku_prices_") and isinstance(data, list):
-                key = name[len("sku_prices_"):]
-                _sku_price_cache[key] = data
-                count += 1
-            elif name.startswith("scenario_") and isinstance(data, dict):
-                key = name[len("scenario_"):]
-                _scenarios[key] = ScenarioAssumptions(**data)
-                count += 1
-            elif name == "domain_mapping" and isinstance(data, list):
-                _domain_mapping_cache["default"] = data
-                count += 1
-        except Exception as e:
-            print(f"[preload] WARNING: failed to load {f.name}: {e}")
+
+    def _load_dir(scan_dir: Path, user_prefix: str | None = None):
+        nonlocal count
+        for f in scan_dir.glob("*.json"):
+            try:
+                with open(f) as fh:
+                    data = json.load(fh)
+                name = f.stem
+                if name.startswith("consumption_") and isinstance(data, list) and len(data) > 0:
+                    raw_key = name[len("consumption_"):]
+                    cache_key = f"{user_prefix}:{raw_key}" if user_prefix else raw_key
+                    _consumption_cache[cache_key] = data
+                    count += 1
+                elif name.startswith("sku_prices_") and isinstance(data, list):
+                    raw_key = name[len("sku_prices_"):]
+                    cache_key = f"{user_prefix}:{raw_key}" if user_prefix else raw_key
+                    _sku_price_cache[cache_key] = data
+                    count += 1
+                elif name.startswith("scenario_") and isinstance(data, dict):
+                    raw_key = name[len("scenario_"):]
+                    ukey = f"{user_prefix}:{raw_key}" if user_prefix else raw_key
+                    _scenarios[ukey] = ScenarioAssumptions(**data)
+                    count += 1
+                elif name == "domain_mapping" and isinstance(data, list) and not user_prefix:
+                    _domain_mapping_cache["default"] = data
+                    count += 1
+            except Exception as e:
+                print(f"[preload] WARNING: failed to load {f.name}: {e}")
+
+    # Top-level files (legacy, no user prefix)
+    _load_dir(DATA_DIR)
+
+    # User subdirectories — reconstruct username from dir name (reverse safe_username)
+    for user_dir in DATA_DIR.iterdir():
+        if not user_dir.is_dir() or user_dir.name.startswith("."):
+            continue
+        username = user_dir.name.replace("_at_", "@")
+        _load_dir(user_dir, username)
+
     print(f"[preload] Loaded {count} cached files into memory")
 
 
@@ -377,6 +394,11 @@ async def get_consumption(
             _consumption_cache[cache_key] = cached
             return {"data": cached, "source": "cached"}
 
+    # Demo mode — never call Logfood; return only what was uploaded via smoke-test
+    from auth import DEMO_TOKEN
+    if user.get("pat") == DEMO_TOKEN:
+        return {"data": [], "source": "demo"}
+
     try:
         loop = asyncio.get_event_loop()
         rows = await loop.run_in_executor(
@@ -532,18 +554,22 @@ async def get_summary(
     if not consumption:
         consumption = _load_json(f"consumption_{account}", ud)
     if not consumption:
-        try:
-            loop = asyncio.get_event_loop()
-            consumption = await loop.run_in_executor(
-                _executor,
-                lambda: query_consumption(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user)),
-            )
-            _consumption_cache[ck] = consumption
-            _save_json(f"consumption_{account}", consumption, ud)
-        except Exception as e:
-            print(f"[summary] WARNING: could not fetch consumption for {account}: {e}")
+        from auth import DEMO_TOKEN
+        if user.get("pat") == DEMO_TOKEN:
             consumption = []
-            _consumption_cache[ck] = []
+        else:
+            try:
+                loop = asyncio.get_event_loop()
+                consumption = await loop.run_in_executor(
+                    _executor,
+                    lambda: query_consumption(account, host=_host(user), token=_token(user), warehouse_id=_warehouse(user)),
+                )
+                _consumption_cache[ck] = consumption
+                _save_json(f"consumption_{account}", consumption, ud)
+            except Exception as e:
+                print(f"[summary] WARNING: could not fetch consumption for {account}: {e}")
+                consumption = []
+                _consumption_cache[ck] = []
 
     mapping_list = _get_mapping(account, ud)
     ws_to_domain = {m["workspace"].lower(): m["domain"] for m in mapping_list}
@@ -1397,6 +1423,9 @@ async def accounts_search(
     user: dict = Depends(get_current_user),
 ):
     """Search Logfood for accounts matching query."""
+    from auth import DEMO_TOKEN
+    if user.get("pat") == DEMO_TOKEN:
+        return {"accounts": []}
     from logfood import search_accounts
     try:
         loop = asyncio.get_event_loop()
