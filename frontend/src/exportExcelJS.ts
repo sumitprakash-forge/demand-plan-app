@@ -62,6 +62,15 @@ export interface ExportOptions {
   scenariosData?: ScenarioExportData[];
 }
 
+interface ProjRowMap {
+  sheetName: string;
+  accountRows: Array<{
+    accountName: string;
+    ucRows: Array<{ name: string; rowNum: number }>;
+    yearSummary: { baselineRow: number; newUcsRow: number; grandTotalRow: number };
+  }>;
+}
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const BRAND        = '1F3B6E';
@@ -205,7 +214,7 @@ function buildProjectionSheetMulti(
   wb: ExcelJS.Workbook,
   scenarioNum: 1 | 2 | 3,
   accountsData: AccountExportData[]
-) {
+): ProjRowMap {
   const sc = SCENARIO_COLORS[scenarioNum];
   const INFO_COLS = 2; // SKU name + $/DBU columns after label
   const totalCols = 1 + INFO_COLS + 36 + 4;
@@ -353,10 +362,14 @@ function buildProjectionSheetMulti(
     return r;
   };
 
+  const accountRows: ProjRowMap['accountRows'] = [];
+
   // Per-account sections
   for (const ad of accountsData) {
     const sd = ad.scenariosData.find(s => s.scenarioNum === scenarioNum);
     if (!sd) continue;
+
+    const acctUcRows: Array<{ name: string; rowNum: number }> = [];
 
     const { activeUseCases, baselineMonths, totalMonths,
             baseYearTotals, ucYearTotals, yearTotals,
@@ -417,7 +430,8 @@ function buildProjectionSheetMulti(
       const mp = uc.monthlyProjection;
       mp.forEach((v, i) => { ucMonthTotals[i] += v; });
       const ucLabel = uc.upliftOnly ? `  ↳ ${uc.name}  [$ uplift only]` : `  ↳ ${uc.name}`;
-      addDataRow(ucLabel, mp, dataStyle(idx % 2 === 0));
+      const ucDataRow = addDataRow(ucLabel, mp, dataStyle(idx % 2 === 0));
+      acctUcRows.push({ name: uc.name, rowNum: ucDataRow.number });
 
       // Compute per-UC blended DBU rate from SKU breakdown; 0 for uplift-only
       let ucRate = DBU_RATE;
@@ -551,11 +565,15 @@ function buildProjectionSheetMulti(
     );
 
     // $DBU group first
+    let yearBaselineRow = 0, yearNewUcsRow = 0, yearGrandTotalRow = 0;
     yLabels.forEach((label, li) => {
       const r = ws.addRow([`${label} — $DBU`, yData[li][0], yData[li][1], yData[li][2],
         yData[li].reduce((s, v) => s + v, 0)]);
       r.height = 18;
       applyRowStyle(r, totalStyle(yBgs[li]));
+      if (li === 0) yearBaselineRow = r.number;
+      else if (li === 1) yearNewUcsRow = r.number;
+      else if (li === 2) yearGrandTotalRow = r.number;
       [2, 3, 4, 5].forEach(c => {
         if (typeof r.getCell(c).value === 'number') r.getCell(c).numFmt = USD_FMT;
       });
@@ -586,47 +604,59 @@ function buildProjectionSheetMulti(
         if (typeof dbuRow.getCell(c).value === 'number') dbuRow.getCell(c).numFmt = '#,##0';
       });
     });
+
+    accountRows.push({
+      accountName: ad.accountName,
+      ucRows: acctUcRows,
+      yearSummary: { baselineRow: yearBaselineRow, newUcsRow: yearNewUcsRow, grandTotalRow: yearGrandTotalRow },
+    });
   }
 
   ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5, showGridLines: true }];
+  return { sheetName: ws.name, accountRows };
 }
 
 // ─── Summary sheet (multi-account) ───────────────────────────────────────────
 
-async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
+async function buildSummarySheet(
+  wb: ExcelJS.Workbook,
+  opts: ExportOptions,
+  projRowMaps: Record<number, ProjRowMap>
+) {
   const ws = wb.addWorksheet('Demand Plan Summary', {
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
     properties: { tabColor: { argb: 'FF' + BRAND } },
   });
 
-  // Use sfdc_id (the backend cache key) for fetching; display name for labels
+  const TOTAL_COLS = 6;
+  ws.columns = [
+    { key: 'type',  width: 16 },
+    { key: 'label', width: 40 },
+    { key: 'y1',    width: 18 },
+    { key: 'y2',    width: 18 },
+    { key: 'y3',    width: 18 },
+    { key: 'total', width: 18 },
+  ];
+
+  addSheetTitle(ws, 'Demand Plan Summary', 'All prices are Databricks List Price', TOTAL_COLS);
+
+  // Formula cell helper: ExcelJS will prepend '=' when writing
+  const fml = (formula: string, result = 0) => ({ formula, result });
+
   const acctEntries = (opts.accounts || []).filter(a => a.name.trim()).map(a => ({
     displayName: a.name,
     fetchKey: a.sfdc_id?.trim() || a.name,
   }));
   if (acctEntries.length === 0) acctEntries.push({ displayName: opts.account, fetchKey: opts.account });
 
-  const allSummaries: Record<string, any> = {};
-  await Promise.all(acctEntries.map(async ({ displayName, fetchKey }) => {
-    try { allSummaries[displayName] = await fetchSummaryAll(fetchKey); } catch {}
-  }));
-
-  ws.columns = [
-    { key: 'label',  width: 46 },
-    { key: 'y1',     width: 18 },
-    { key: 'y2',     width: 18 },
-    { key: 'y3',     width: 18 },
-    { key: 'total',  width: 18 },
-  ];
-
-  addSheetTitle(ws, 'Demand Plan Summary', 'All prices are Databricks List Price', 5);
-
   for (let si = 0; si < 3; si++) {
-    const sNum = si + 1;
+    const sNum = (si + 1) as 1 | 2 | 3;
     const sc = SCENARIO_COLORS[sNum];
-    const firstAcct = allSummaries[acctEntries[0].displayName];
-    const desc = firstAcct?.scenarios?.[si]?.description || `Scenario ${sNum}`;
+    const projMap = projRowMaps[sNum];
+    const sn = projMap.sheetName; // e.g. "S1 — Projection"
+    const desc = opts.accountsData[0]?.scenariosData[si]?.assumptions || `Scenario ${sNum}`;
 
+    // Scenario header band
     const secRow = ws.addRow([`SCENARIO ${sNum}  ·  ${desc.toUpperCase()}`]);
     secRow.height = 22;
     secRow.getCell(1).style = {
@@ -634,52 +664,106 @@ async function buildSummarySheet(wb: ExcelJS.Workbook, opts: ExportOptions) {
       fill: { type: 'pattern', pattern: 'solid', fgColor: rgb(sc.bg) },
       alignment: { vertical: 'middle', indent: 1 },
     };
-    ws.mergeCells(secRow.number, 1, secRow.number, 5);
+    ws.mergeCells(secRow.number, 1, secRow.number, TOTAL_COLS);
     ws.addRow([]);
 
-    const sh = ws.addRow(['SUMMARY  —  Total $DBUs (List)', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
+    // Cross-account summary table
+    const sh = ws.addRow(['SUMMARY  —  Total $DBUs (List)', '', 'Year 1', 'Year 2', 'Year 3', 'Grand Total']);
     applyRowStyle(sh, headerStyle(sc.bg));
     sh.height = 20;
+    ws.mergeCells(sh.number, 1, sh.number, 2);
 
-    let crossY1 = 0, crossY2 = 0, crossY3 = 0, crossTotal = 0;
+    const acctSummaryRowNums: number[] = [];
     acctEntries.forEach(({ displayName }, idx) => {
-      const gt = allSummaries[displayName]?.scenarios?.[si]?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
-      const y1 = gt?.year1 || 0, y2 = gt?.year2 || 0, y3 = gt?.year3 || 0, tot = gt?.total || 0;
-      crossY1 += y1; crossY2 += y2; crossY3 += y3; crossTotal += tot;
-      const dr = ws.addRow([displayName, y1, y2, y3, tot]);
-      applyRowStyle(dr, dataStyle(idx % 2 === 1), USD_FMT);
+      const acctProjRows = projMap.accountRows.find(a => a.accountName === displayName);
+      const sd = opts.accountsData.find(a => a.accountName === displayName)?.scenariosData.find(s => s.scenarioNum === sNum);
+      const gtR = acctProjRows?.yearSummary.grandTotalRow;
+      const y1r = gtR ? fml(`'${sn}'!B${gtR}`, sd?.yearTotals[0] ?? 0) : 0;
+      const y2r = gtR ? fml(`'${sn}'!C${gtR}`, sd?.yearTotals[1] ?? 0) : 0;
+      const y3r = gtR ? fml(`'${sn}'!D${gtR}`, sd?.yearTotals[2] ?? 0) : 0;
+      const totr = gtR ? fml(`'${sn}'!E${gtR}`, (sd?.yearTotals ?? []).reduce((a, b) => a + b, 0)) : 0;
+      const dr = ws.addRow([displayName, '', y1r, y2r, y3r, totr]);
+      applyRowStyle(dr, dataStyle(idx % 2 === 1));
+      [3, 4, 5, 6].forEach(c => { dr.getCell(c).numFmt = USD_FMT; });
+      ws.mergeCells(dr.number, 1, dr.number, 2);
+      acctSummaryRowNums.push(dr.number);
     });
 
-    const gtr = ws.addRow(['Grand Total', crossY1, crossY2, crossY3, crossTotal]);
+    // Grand Total (cross-account)
+    const fRow = acctSummaryRowNums[0], lRow = acctSummaryRowNums[acctSummaryRowNums.length - 1];
+    const gtr = ws.addRow(['Grand Total', '',
+      fml(fRow === lRow ? `C${fRow}` : `SUM(C${fRow}:C${lRow})`),
+      fml(fRow === lRow ? `D${fRow}` : `SUM(D${fRow}:D${lRow})`),
+      fml(fRow === lRow ? `E${fRow}` : `SUM(E${fRow}:E${lRow})`),
+      fml(fRow === lRow ? `F${fRow}` : `SUM(F${fRow}:F${lRow})`),
+    ]);
     applyRowStyle(gtr, totalStyle(GRAND_BG));
-    gtr.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = USD_FMT; });
-
+    [3, 4, 5, 6].forEach(c => { gtr.getCell(c).numFmt = USD_FMT; });
+    ws.mergeCells(gtr.number, 1, gtr.number, 2);
     ws.addRow([]);
 
+    // Per-account UC detail tables
     acctEntries.forEach(({ displayName: name }) => {
-      const acctData = allSummaries[name]?.scenarios?.[si];
-      const grandTotal = acctData?.summary_rows?.find((r: any) => r.use_case_area === 'Grand Total');
-      const baseRow = acctData?.summary_rows?.find(
-        (r: any) => !r.is_use_case && r.use_case_area !== 'Grand Total' && r.use_case_area !== 'New Use Cases'
-      );
-      const ucRows: any[] = acctData?.summary_rows?.filter((r: any) => r.is_use_case) || [];
+      const acctProjRows = projMap.accountRows.find(a => a.accountName === name);
+      const sd = opts.accountsData.find(a => a.accountName === name)?.scenariosData.find(s => s.scenarioNum === sNum);
+      if (!acctProjRows || !sd) return;
+      const { yearSummary, ucRows } = acctProjRows;
 
-      const dh = ws.addRow([`${name.toUpperCase()}  —  $DBUs List`, 'Year 1', 'Year 2', 'Year 3', 'Total']);
+      // Account sub-header
+      const dh = ws.addRow([`${name.toUpperCase()}  —  $DBUs List`, '', 'Year 1', 'Year 2', 'Year 3', 'Total']);
       applyRowStyle(dh, headerStyle(SUBHEADER_BG, SUBHEADER_FG));
+      ws.mergeCells(dh.number, 1, dh.number, 2);
 
-      if (baseRow) {
-        const br = ws.addRow(['Existing — Live Use Cases', baseRow.year1, baseRow.year2, baseRow.year3, baseRow.total]);
-        applyRowStyle(br, dataStyle(false), USD_FMT);
-      }
-      ucRows.forEach((row, idx) => {
-        const ucName = (row.use_case_area || '').replace(/^\s*↳\s*/, '').trim();
-        const r = ws.addRow(['  ↳ ' + ucName, row.year1, row.year2, row.year3, row.total]);
-        applyRowStyle(r, dataStyle(idx % 2 === 1), USD_FMT);
+      // Existing — Live Use Cases (baseline)
+      const baseY = sd.baseYearTotals;
+      const br = ws.addRow([
+        '', 'Existing — Live Use Cases',
+        fml(`'${sn}'!B${yearSummary.baselineRow}`, baseY[0] ?? 0),
+        fml(`'${sn}'!C${yearSummary.baselineRow}`, baseY[1] ?? 0),
+        fml(`'${sn}'!D${yearSummary.baselineRow}`, baseY[2] ?? 0),
+        fml(`'${sn}'!E${yearSummary.baselineRow}`, (baseY ?? []).reduce((a, b) => a + b, 0)),
+      ]);
+      applyRowStyle(br, dataStyle(false));
+      [3, 4, 5, 6].forEach(c => { br.getCell(c).numFmt = USD_FMT; });
+
+      // Individual UC rows — cross-sheet monthly SUM formulas
+      ucRows.forEach(({ name: ucName, rowNum: ucProjRow }, idx) => {
+        const uc = sd.activeUseCases.find(u => u.name === ucName);
+        const mp = uc?.monthlyProjection ?? [];
+        const ucY1 = mp.slice(0, 12).reduce((a, b) => a + b, 0);
+        const ucY2 = mp.slice(12, 24).reduce((a, b) => a + b, 0);
+        const ucY3 = mp.slice(24, 36).reduce((a, b) => a + b, 0);
+        const r = ws.addRow([
+          'New Use Case',
+          ucName,
+          fml(`SUM('${sn}'!D${ucProjRow}:O${ucProjRow})`, ucY1),   // M1–M12
+          fml(`SUM('${sn}'!P${ucProjRow}:AA${ucProjRow})`, ucY2),  // M13–M24
+          fml(`SUM('${sn}'!AB${ucProjRow}:AM${ucProjRow})`, ucY3), // M25–M36
+          0,
+        ]);
+        r.getCell(6).value = fml(`C${r.number}+D${r.number}+E${r.number}`, ucY1 + ucY2 + ucY3);
+        applyRowStyle(r, dataStyle(idx % 2 === 1));
+        // "New Use Case" badge styling on Type cell
+        r.getCell(1).style = {
+          font: { bold: true, size: 9, name: 'Calibri', color: rgb('1D4ED8') },
+          fill: { type: 'pattern', pattern: 'solid', fgColor: rgb('DBEAFE') },
+          alignment: { horizontal: 'center', vertical: 'middle' },
+        };
+        [3, 4, 5, 6].forEach(c => { r.getCell(c).numFmt = USD_FMT; });
       });
 
-      const tot = ws.addRow([`Total (${name})`, grandTotal?.year1 || 0, grandTotal?.year2 || 0, grandTotal?.year3 || 0, grandTotal?.total || 0]);
+      // Total row
+      const gtY = sd.yearTotals;
+      const tot = ws.addRow([
+        `Total (${name})`, '',
+        fml(`'${sn}'!B${yearSummary.grandTotalRow}`, gtY[0] ?? 0),
+        fml(`'${sn}'!C${yearSummary.grandTotalRow}`, gtY[1] ?? 0),
+        fml(`'${sn}'!D${yearSummary.grandTotalRow}`, gtY[2] ?? 0),
+        fml(`'${sn}'!E${yearSummary.grandTotalRow}`, (gtY ?? []).reduce((a, b) => a + b, 0)),
+      ]);
       applyRowStyle(tot, totalStyle());
-      tot.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = USD_FMT; });
+      [3, 4, 5, 6].forEach(c => { tot.getCell(c).numFmt = USD_FMT; });
+      ws.mergeCells(tot.number, 1, tot.number, 2);
       ws.addRow([]);
     });
 
@@ -1299,14 +1383,14 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   wb.created = new Date();
   wb.properties.date1904 = false;
 
-  // 1. Summary (all accounts)
-  // 1. Summary
-  await buildSummarySheet(wb, opts);
-
-  // 2. Projection sheets (S1, S2, S3 — multi-account horizontal view)
+  // 1. Projection sheets first (to capture row maps for cross-sheet references)
+  const projRowMaps: Record<number, ProjRowMap> = {};
   for (const sNum of [1, 2, 3] as const) {
-    buildProjectionSheetMulti(wb, sNum, opts.accountsData);
+    projRowMaps[sNum] = buildProjectionSheetMulti(wb, sNum, opts.accountsData);
   }
+
+  // 2. Summary sheet (references projection sheet cells)
+  await buildSummarySheet(wb, opts, projRowMaps);
 
   // 3. Historical sheets: one set per account
   for (const ad of opts.accountsData) {
