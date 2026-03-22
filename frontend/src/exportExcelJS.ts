@@ -467,7 +467,7 @@ function buildProjectionSheetMulti(
         const col = colLetter(c);
         const cell = gtRow.getCell(c);
         const precomputed = typeof cell.value === 'number' ? cell.value : 0;
-        cell.value = { formula: `=${col}${baselineRN}+${col}${subtotalRN}`, result: precomputed };
+        cell.value = { formula: `${col}${baselineRN}+${col}${subtotalRN}`, result: precomputed };
       }
     } else {
       addDataRow(
@@ -503,7 +503,7 @@ function buildProjectionSheetMulti(
         const col = colLetter(c);
         const cell = dbuGtRow.getCell(c);
         const precomputed = typeof cell.value === 'number' ? cell.value : 0;
-        cell.value = { formula: `=${col}${dbuBaseRN}+${col}${dbuSubRN}`, result: precomputed };
+        cell.value = { formula: `${col}${dbuBaseRN}+${col}${dbuSubRN}`, result: precomputed };
         if (c > 3) cell.numFmt = '#,##0';
       }
     } else {
