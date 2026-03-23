@@ -13,3 +13,5 @@ command:
 env:
   - name: JWT_SECRET
     value: "demand-plan-prod-secret-ncc-2025"
+  - name: DEMAND_PLAN_DATA_DIR
+    value: "/tmp/demand-plan-data"

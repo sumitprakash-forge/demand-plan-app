@@ -166,7 +166,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
   }, []);
 
   const handleClearAll = useCallback(async () => {
-    if (!window.confirm('Clear all cached data and reset accounts? This cannot be undone.')) return;
+    if (!window.confirm('Clear your cached data and reset accounts? Only your data will be deleted — other users are unaffected. This cannot be undone.')) return;
     setClearing(true);
     try {
       await fetch('/api/clear-data', { method: 'DELETE' });
@@ -257,15 +257,26 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
           return i in overridesMap ? computed * (1 + overridesMap[i] / 100) : computed;
         });
 
-        const allUCs = (sr.new_use_cases || []).map((uc: any) => ({
-          ...uc,
-          steadyStateDbu: uc.steadyStateDbu || uc.steady_state_dbu || 0,
-          onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
-          liveMonth: uc.liveMonth || uc.live_month || 6,
-          rampType: uc.rampType || uc.ramp_type || 'linear',
-          scenarios: uc.scenarios || [true, false, false],
-          monthlyProjection: calcUseCaseMonthly(uc),
-        }));
+        const allUCs = (sr.new_use_cases || []).map((uc: any) => {
+          const ss = uc.steadyStateDbu || uc.steady_state_dbu || 0;
+          const isUplift = uc.upliftOnly ?? uc.uplift_only ?? false;
+          const rawSku = uc.skuBreakdown || uc.sku_breakdown || [];
+          const skuBreakdown = rawSku.length > 0 ? rawSku : (uc.skuAllocation || uc.sku_allocation || []).map((s: any) => {
+            const pct = s.percentage || 0;
+            const dollarDbu = ss * pct / 100;
+            return { sku: s.sku || '', percentage: pct, dbus: isUplift ? 0 : Math.round(dollarDbu / 0.20), dollarDbu };
+          });
+          return {
+            ...uc,
+            steadyStateDbu: ss,
+            onboardingMonth: uc.onboardingMonth || uc.onboarding_month || 1,
+            liveMonth: uc.liveMonth || uc.live_month || 6,
+            rampType: uc.rampType || uc.ramp_type || 'linear',
+            scenarios: uc.scenarios || [true, false, false],
+            skuBreakdown,
+            monthlyProjection: calcUseCaseMonthly(uc),
+          };
+        });
         const activeUseCases = allUCs.filter((uc: any) => uc.scenarios[sNum - 1]);
 
         const ucMonths = new Array(36).fill(0);
@@ -315,13 +326,25 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
             dollarPerMonth: sa.dollarPerMonth || sa.dollar_per_month || 0,
           })),
         })),
-        skuBreakdown: (uc.skuBreakdown || uc.sku_breakdown || []).map((s: any) => ({
-          sku: s.sku || '',
-          percentage: s.percentage || 0,
-          dbus: s.dbus || 0,
-          dollarDbu: s.dollarDbu || s.dollar_dbu || 0,
-          overridePrice: s.overridePrice ?? s.override_price ?? undefined,
-        })),
+        skuBreakdown: (() => {
+          const raw = uc.skuBreakdown || uc.sku_breakdown || [];
+          const ss = uc.steadyStateDbu || uc.steady_state_dbu || 0;
+          const isUplift = uc.upliftOnly ?? uc.uplift_only ?? false;
+          if (raw.length > 0) {
+            return raw.map((s: any) => ({
+              sku: s.sku || '',
+              percentage: s.percentage || 0,
+              dbus: s.dbus || 0,
+              dollarDbu: s.dollarDbu || s.dollar_dbu || 0,
+              overridePrice: s.overridePrice ?? s.override_price ?? undefined,
+            }));
+          }
+          return (uc.skuAllocation || uc.sku_allocation || []).map((s: any) => {
+            const pct = s.percentage || 0;
+            const dollarDbu = ss * pct / 100;
+            return { sku: s.sku || '', percentage: pct, dbus: isUplift ? 0 : Math.round(dollarDbu / 0.20), dollarDbu, overridePrice: undefined };
+          });
+        })(),
         monthlyProjection: calcUseCaseMonthly(uc),
       }));
 

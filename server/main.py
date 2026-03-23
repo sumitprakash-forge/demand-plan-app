@@ -38,8 +38,11 @@ app.add_middleware(
 _executor = ThreadPoolExecutor(max_workers=4)
 
 # In-memory stores (persisted to JSON files in data/)
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
+# Use env var so deployed app can point to a persistent workspace path
+# that survives redeployments (set DEMAND_PLAN_DATA_DIR in app.yaml).
+_default_data_dir = Path(__file__).parent / "data"
+DATA_DIR = Path(os.environ.get("DEMAND_PLAN_DATA_DIR", str(_default_data_dir)))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Caches
 _domain_mapping_cache: dict[str, list[dict]] = {}
@@ -525,7 +528,7 @@ def _calc_use_case_monthly(uc: dict, total_months: int = 36) -> list[float]:
     lm = uc.get("liveMonth") or uc.get("live_month") or 6
     ramp = uc.get("rampType") or uc.get("ramp_type") or "linear"
     adhoc_periods = uc.get("adhocPeriods") or uc.get("adhoc_periods") or []
-    if ss <= 0 or lm <= om:
+    if ss <= 0 or lm < om:
         return result
     ramp_months = lm - om
     for i in range(total_months):
@@ -1043,7 +1046,8 @@ async def get_forecast(
 
 @app.delete("/api/clear-data")
 async def clear_all_data(user: dict = Depends(get_current_user)):
-    """Delete current user's cached JSON files and clear their in-memory caches."""
+    """Delete ONLY the current user's cached JSON files and clear their in-memory caches.
+    Other users' data is never touched."""
     ud = _udir(user)
     prefix = f"{user['sub']}:"
     for k in list(_consumption_cache.keys()):
@@ -1054,12 +1058,14 @@ async def clear_all_data(user: dict = Depends(get_current_user)):
         if k.startswith(prefix): del _forecast_overrides[k]
     for k in list(_sku_price_cache.keys()):
         if k.startswith(prefix): del _sku_price_cache[k]
+    for k in list(_domain_mapping_cache.keys()):
+        if k.startswith(prefix): del _domain_mapping_cache[k]
     deleted = []
     for f in ud.glob("*.json"):
-        if f.name != "config.json":  # preserve warehouse_id
+        if f.name != "config.json":  # preserve warehouse_id / PAT config
             f.unlink()
             deleted.append(f.name)
-    return {"deleted": deleted, "count": len(deleted)}
+    return {"deleted": deleted, "count": len(deleted), "user": user["sub"]}
 
 # ---------------------------------------------------------------------------
 
