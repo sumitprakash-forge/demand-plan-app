@@ -208,28 +208,53 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
         if (!domMonthly[domain]) domMonthly[domain] = {};
         domMonthly[domain][row.month] = (domMonthly[domain][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
       });
+      // Find last complete month (exclude current in-flight partial month)
+      const currentMonthStr = new Date().toISOString().slice(0, 7);
+      const allDataMonths = new Set<string>();
+      historicalData.forEach((row: any) => { if (row.month) allDataMonths.add(row.month); });
+      const completeMonths = [...allDataMonths].filter(m => m < currentMonthStr).sort();
+      const useMonths = completeMonths.length > 0 ? completeMonths : [...allDataMonths].sort();
+      const lastCompleteMonth = useMonths[useMonths.length - 1] || '';
+      // Last complete month totals — both $ and DBU
+      const lastCompleteValue = historicalData
+        .filter((r: any) => r.month === lastCompleteMonth)
+        .reduce((s: number, r: any) => s + (parseFloat(r.dollar_dbu_list) || 0), 0);
+      const lastCompleteDbu = historicalData
+        .filter((r: any) => r.month === lastCompleteMonth)
+        .reduce((s: number, r: any) => s + (parseFloat(r.total_dbus) || 0), 0);
+
       const domainBaselines = Object.entries(domMonthly).map(([domain, mData]) => {
         const t12m = Object.values(mData).reduce((s, v) => s + v, 0);
         return { domain, t12m, avgMonthly: t12m / Math.max(Object.keys(mData).length, 1) };
       }).sort((a, b) => b.t12m - a.t12m);
 
-      // Use same baseline avg formula as backend: total T12M / unique months count
-      // (not per-domain avg sum, which drifts when domains have different history coverage)
-      const allHistoricalMonths = new Set<string>();
-      historicalData.forEach((row: any) => { if (row.month) allHistoricalMonths.add(row.month); });
-      const totalT12m = domainBaselines.reduce((s, b) => s + b.t12m, 0);
-      const totalBaseMonthly = totalT12m / Math.max(allHistoricalMonths.size, 1);
+      // n_offset: gap from last complete month to contract start date
+      const contractStart = acct.contractStartDate || '';
+      let nOffset = 1; // default: 1 month forward
+      if (lastCompleteMonth && contractStart) {
+        const [fy, fm] = lastCompleteMonth.split('-').map(Number);
+        const [ty, tm] = contractStart.split('-').map(Number);
+        nOffset = Math.max((ty * 12 + tm) - (fy * 12 + fm), 0);
+      }
 
       const scenarioRess = [s1Res, s2Res, s3Res];
       const scenariosData = ([1, 2, 3] as const).map((sNum, idx) => {
         const sr = scenarioRess[idx];
-        const growthRate = sr.baseline_growth_rate || 0.02;
-        const momRate = growthRate / 12;
+        const growthRate = sr.baseline_growth_rate || 0.005;
+        const momRate = growthRate;
+        const baselineAdj = sr.baseline_adjustment || 0;
+        const adjustedBase = lastCompleteValue * (1 + baselineAdj);
+        const adjustedBaseDbu = lastCompleteDbu * (1 + baselineAdj);
         const overridesMap: Record<number, number> = {};
         (sr.baseline_overrides || []).forEach((o: any) => { overridesMap[o.month_index] = o.value; });
+        // overrides store % — apply same % to both $ and DBU
         const baselineMonths = Array.from({ length: 36 }, (_, i) => {
-          const computed = totalBaseMonthly * Math.pow(1 + momRate, i + 1);
-          return i in overridesMap ? overridesMap[i] : computed;
+          const computed = adjustedBase * Math.pow(1 + momRate, nOffset + i);
+          return i in overridesMap ? computed * (1 + overridesMap[i] / 100) : computed;
+        });
+        const baselineDbuMonths = Array.from({ length: 36 }, (_, i) => {
+          const computed = adjustedBaseDbu * Math.pow(1 + momRate, nOffset + i);
+          return i in overridesMap ? computed * (1 + overridesMap[i] / 100) : computed;
         });
 
         const allUCs = (sr.new_use_cases || []).map((uc: any) => ({
@@ -265,7 +290,7 @@ function AppShell({ currentUser, onLogout }: { currentUser: { username: string; 
           assumptions: sr.assumptions_text || '',
           baselineGrowthRate: growthRate * 100,
           activeUseCases,
-          baselineMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals,
+          baselineMonths, baselineDbuMonths, totalMonths, baseYearTotals, ucYearTotals, yearTotals,
           baselineOverrides,
         };
       });

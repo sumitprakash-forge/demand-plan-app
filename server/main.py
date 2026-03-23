@@ -8,6 +8,7 @@ import os
 import traceback
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, UploadFile, File
@@ -544,6 +545,7 @@ async def get_summary(
     account: str = Query(default="Walmart"),
     scenario: int = Query(default=1),
     contract_months: int = Query(default=36),
+    contract_start_date: str = Query(default=""),  # YYYY-MM — used to bridge gap from last complete month
     user: dict = Depends(get_current_user),
 ):
     """Return demand plan summary — pulls projections from saved scenario config."""
@@ -585,9 +587,26 @@ async def get_summary(
         month = row.get("month", "")
         monthly_totals[month] += float(dbu)
 
-    total_t12m = sum(domain_totals.values())
-    months_count = max(len(monthly_totals), 1)
-    avg_monthly = total_t12m / months_count
+    # Use last complete month as baseline starting point (exclude current partial month)
+    current_month_str = date.today().strftime("%Y-%m")
+    complete_monthly = {m: v for m, v in monthly_totals.items() if m < current_month_str}
+    if not complete_monthly:
+        complete_monthly = monthly_totals  # fallback
+    last_complete_month = max(complete_monthly.keys()) if complete_monthly else ""
+    last_complete_value = complete_monthly.get(last_complete_month, 0)
+    total_t12m = sum(monthly_totals.values())
+    avg_monthly = total_t12m / len(monthly_totals) if monthly_totals else 0
+
+    # n_offset: months from last_complete_month to contract_start_date (for gap bridging)
+    def _months_diff(from_ym: str, to_ym: str) -> int:
+        fy, fm = int(from_ym[:4]), int(from_ym[5:7])
+        ty, tm = int(to_ym[:4]), int(to_ym[5:7])
+        return max((ty * 12 + tm) - (fy * 12 + fm), 0)
+
+    if contract_start_date and last_complete_month:
+        n_offset = _months_diff(last_complete_month, contract_start_date)
+    else:
+        n_offset = 1  # default: one month forward
 
     # Get saved scenario config
     key = f"{account}_{scenario}"
@@ -601,16 +620,30 @@ async def get_summary(
     # Derive number of contract years
     num_years = max(1, contract_months // 12)
 
-    # Baseline growth rate
-    baseline_growth = 0.02  # default 2% MoM
+    # Baseline growth rate (MoM directly, e.g. 0.005 = 0.5% MoM)
+    baseline_growth = 0.005  # default 0.5% MoM
+    baseline_adjustment = 0.0  # level adjustment (e.g. 0.10 = +10%)
     if scenario_data:
-        baseline_growth = scenario_data.get("baseline_growth_rate", 0.02)
+        baseline_growth = scenario_data.get("baseline_growth_rate", 0.005)
+        baseline_adjustment = scenario_data.get("baseline_adjustment", 0.0)
 
-    # Calculate baseline projection (compound monthly growth)
-    mom_rate = baseline_growth / 12
+    # Apply level adjustment to last complete month value
+    mom_rate = baseline_growth
+    adjusted_base = last_complete_value * (1 + baseline_adjustment)
+
+    # Apply per-month baseline overrides (same as get_consumption_forecast)
+    overrides_raw = (scenario_data or {}).get("baseline_overrides", [])
+    overrides_map = {int(o["month_index"]): float(o["value"]) for o in overrides_raw}
+
+    # Baseline: compound from last_complete_month forward, bridging gap to contract M1
+    # M1 = adjusted_base × (1+r)^n_offset, M2 = adjusted_base × (1+r)^(n_offset+1), …
     baseline_year_totals = [0.0] * num_years
     for i in range(contract_months):
-        monthly = avg_monthly * ((1 + mom_rate) ** (i + 1))
+        computed = adjusted_base * ((1 + mom_rate) ** (n_offset + i))
+        if i in overrides_map:
+            monthly = computed * (1 + overrides_map[i] / 100)
+        else:
+            monthly = computed
         if i // 12 < num_years:
             baseline_year_totals[i // 12] += monthly
 
@@ -650,7 +683,7 @@ async def get_summary(
 
     # Build summary rows dynamically
     baseline_row: dict = {
-        "use_case_area": f"Existing Baseline ({baseline_growth*100:.1f}% MoM growth)",
+        "use_case_area": f"Existing Baseline ({last_complete_month}, {baseline_growth*100:.2f}% MoM)",
         "total": round(sum(baseline_year_totals)),
     }
     for y in range(num_years):
@@ -765,9 +798,18 @@ async def get_consumption_forecast(
     ud = _udir(user)
     ck = f"{user['sub']}:{account}"
     consumption = _consumption_cache.get(ck) or _load_json(f"consumption_{account}", ud) or []
-    total_t12m = sum(float(r.get("dollar_dbu_list", 0) or 0) for r in consumption)
-    months_count = max(len({r.get("month") for r in consumption if r.get("month")}), 1)
-    avg_monthly = total_t12m / months_count
+
+    # Build monthly totals and exclude current in-flight (partial) month from avg
+    monthly_map: dict[str, float] = defaultdict(float)
+    for r in consumption:
+        m = r.get("month", "")
+        if m:
+            monthly_map[m] += float(r.get("dollar_dbu_list", 0) or 0)
+    current_month_str = date.today().strftime("%Y-%m")
+    complete_months = {m: v for m, v in monthly_map.items() if m < current_month_str}
+    baseline_monthly = complete_months if complete_months else monthly_map
+    last_complete_month = max(baseline_monthly.keys()) if baseline_monthly else ""
+    last_complete_value = baseline_monthly.get(last_complete_month, 0)
 
     # Get scenario config
     key = f"{account}_{scenario}"
@@ -778,8 +820,21 @@ async def get_consumption_forecast(
     else:
         scenario_data = _load_json(f"scenario_{key}", ud)
 
-    baseline_growth = (scenario_data or {}).get("baseline_growth_rate", 0.02)
-    mom_rate = baseline_growth / 12
+    baseline_growth = (scenario_data or {}).get("baseline_growth_rate", 0.005)
+    baseline_adjustment = (scenario_data or {}).get("baseline_adjustment", 0.0)
+    mom_rate = baseline_growth
+    adjusted_base = last_complete_value * (1 + baseline_adjustment)
+
+    # n_offset: gap from last complete month to contract start (start_date = contract M1)
+    def _months_diff_fc(from_ym: str, to_ym: str) -> int:
+        fy, fm = int(from_ym[:4]), int(from_ym[5:7])
+        ty, tm = int(to_ym[:4]), int(to_ym[5:7])
+        return max((ty * 12 + tm) - (fy * 12 + fm), 0)
+
+    if start_date and last_complete_month:
+        n_offset = _months_diff_fc(last_complete_month, start_date)
+    else:
+        n_offset = 1  # default: one month forward
 
     # Apply per-month baseline overrides
     overrides_raw = (scenario_data or {}).get("baseline_overrides", [])
@@ -787,9 +842,10 @@ async def get_consumption_forecast(
     baseline_values = []
     overridden_month_indices = []
     for i in range(months):
-        computed = avg_monthly * ((1 + mom_rate) ** (i + 1))
+        computed = adjusted_base * ((1 + mom_rate) ** (n_offset + i))
         if i in overrides_map:
-            baseline_values.append(round(overrides_map[i]))
+            pct = overrides_map[i]  # stored as % (e.g. -10 for -10%), applied to both $ and DBU
+            baseline_values.append(round(computed * (1 + pct / 100)))
             overridden_month_indices.append(i)
         else:
             baseline_values.append(round(computed))
@@ -797,7 +853,7 @@ async def get_consumption_forecast(
     rows = [{
         "type": "baseline",
         "id": "baseline",
-        "label": f"Existing Baseline ({baseline_growth * 100:.1f}% MoM)",
+        "label": f"Existing Baseline ({last_complete_month}, {baseline_growth * 100:.2f}% MoM)",
         "domain": "",
         "values": baseline_values,
         "onboarding_month": None,
@@ -853,14 +909,15 @@ async def get_consumption_forecast(
 async def get_summary_all(
     account: str = Query(default="Walmart"),
     contract_months: int = Query(default=36),
+    contract_start_date: str = Query(default=""),
     user: dict = Depends(get_current_user),
 ):
     """Return summary for all 3 scenarios (fetched in parallel)."""
     account = _norm_account(account)
     results = await asyncio.gather(
-        get_summary(account, 1, contract_months, user),
-        get_summary(account, 2, contract_months, user),
-        get_summary(account, 3, contract_months, user),
+        get_summary(account, 1, contract_months, contract_start_date, user),
+        get_summary(account, 2, contract_months, contract_start_date, user),
+        get_summary(account, 3, contract_months, contract_start_date, user),
     )
     return {"account": account, "scenarios": list(results)}
 
@@ -876,11 +933,9 @@ async def save_scenario(data: ScenarioAssumptions, user: dict = Depends(get_curr
     ud = _udir(user)
     key = f"{data.account}_{data.scenario_id}"
     ukey = f"{user['sub']}:{key}"
-    current = _scenarios.get(ukey)
-    if current is None:
-        cached = _load_json(f"scenario_{key}", ud)
-        if cached:
-            current = ScenarioAssumptions(**cached)
+    # Always read from disk for the conflict check — in-memory cache is stale across workers
+    cached = _load_json(f"scenario_{key}", ud)
+    current = ScenarioAssumptions(**cached) if cached else _scenarios.get(ukey)
     if current is not None and data.version != current.version:
         raise HTTPException(
             status_code=409,

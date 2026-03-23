@@ -117,7 +117,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
         // Step 3: Fetch summary
         updateStep(`${a.name}-summary`, { step: `${a.name} — building summary...`, done: false });
         try {
-          const result = await fetchSummaryAll(a.sfdc_id, a.contractMonths ?? 36);
+          const result = await fetchSummaryAll(a.sfdc_id, a.contractMonths ?? 36, a.contractStartDate ?? '');
           newDataMap[a.name] = result;
           updateStep(`${a.name}-summary`, { step: `${a.name} — summary ready`, done: true });
           loadedAccountsRef.current.add(a.name);

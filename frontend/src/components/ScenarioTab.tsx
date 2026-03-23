@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, fetchLogfoodUseCases, uploadLogfoodUseCases, formatCurrency, ConflictError } from '../api';
+import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, fetchLogfoodUseCases, uploadLogfoodUseCases, formatCurrency, formatCurrencyFull, ConflictError } from '../api';
 import type { AccountConfig } from '../App';
 
 interface Props {
@@ -54,6 +54,12 @@ function fmtShort(v: number): string {
   return `$${v}`;
 }
 
+function fmtDbu(v: number): string {
+  if (v >= 1000000) return `${(v/1000000).toFixed(1)}M DBU`;
+  if (v >= 1000) return `${Math.round(v/1000)}K DBU`;
+  return `${Math.round(v)} DBU`;
+}
+
 interface SKUAllocation {
   sku: string;        // friendly name (or '__custom__' sentinel while editing)
   percentage: number; // 0-100
@@ -89,7 +95,8 @@ interface NewUseCase {
 
 interface DomainBaseline {
   domain: string;
-  monthlyActuals: Record<string, number>;
+  monthlyActuals: Record<string, number>;      // $DBU per month
+  monthlyDbus: Record<string, number>;          // raw DBU per month
   t12m: number;
   t3m: number;
   avgMonthly: number;
@@ -203,7 +210,8 @@ function recalcSkuBreakdown(
 
 function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, isDemo = false }: InnerProps) {
   const [scenario, setScenario] = useState(1);
-  const [baselineGrowthRate, setBaselineGrowthRate] = useState(2); // % MoM
+  const [baselineGrowthRate, setBaselineGrowthRate] = useState(0.5); // % MoM
+  const [baselineAdjustment, setBaselineAdjustment] = useState(0); // % level adjustment (+10 = +10%)
   const [assumptionsText, setAssumptionsText] = useState('');
   const [newUseCases, setNewUseCases] = useState<NewUseCase[]>([]);
   const [domainBaselines, setDomainBaselines] = useState<DomainBaseline[]>([]);
@@ -217,8 +225,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
   const [loading, setLoading] = useState(false);
   const [expandedBaseline, setExpandedBaseline] = useState(true);
   const [expandedOverrides, setExpandedOverrides] = useState(false);
-  const [overrideMode, setOverrideMode] = useState<'absolute' | 'percent'>('absolute');
-  const [baselineOverrides, setBaselineOverrides] = useState<Record<number, number>>({}); // monthIndex(0-35) -> absolute dollar value
+  const [baselineOverrides, setBaselineOverrides] = useState<Record<number, number>>({}); // monthIndex -> % adjustment (e.g. -10 for -10%)
   const [expandedUC, setExpandedUC] = useState<string | null>(null);
 
   // Inner tab: 'builder' | 'logfood'
@@ -308,7 +315,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
     try {
       // Load the current scenario's use cases (each scenario maintains its own list)
       const data = await fetchScenario(account, scenario);
-      setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
+      setBaselineGrowthRate((data.baseline_growth_rate || 0.005) * 100);
+      setBaselineAdjustment((data.baseline_adjustment || 0) * 100);
       setAssumptionsText(data.assumptions_text || '');
       setNewUseCases(parseUCs(data.new_use_cases || []));
       const ovMap: Record<number, number> = {};
@@ -326,21 +334,29 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
       const consumption = await fetchConsumption(account);
       const consumptionData = consumption.data || [];
       const domainMonthly: Record<string, Record<string, number>> = {};
+      const domainDbus: Record<string, Record<string, number>> = {};
       consumptionData.forEach((row: any) => {
         const ws = row.workspace_name || '';
         const domain = mapping[ws] || 'Unmapped';
         const month = row.month || '';
-        const dbu = parseFloat(row.dollar_dbu_list) || 0;
+        const dollars = parseFloat(row.dollar_dbu_list) || 0;
+        const dbus = parseFloat(row.total_dbus) || 0;
         if (!domainMonthly[domain]) domainMonthly[domain] = {};
-        domainMonthly[domain][month] = (domainMonthly[domain][month] || 0) + dbu;
+        if (!domainDbus[domain]) domainDbus[domain] = {};
+        domainMonthly[domain][month] = (domainMonthly[domain][month] || 0) + dollars;
+        domainDbus[domain][month] = (domainDbus[domain][month] || 0) + dbus;
       });
+      const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
       const baselines: DomainBaseline[] = Object.entries(domainMonthly)
         .map(([domain, monthData]) => {
           const months = Object.keys(monthData).sort();
-          const t12m = Object.values(monthData).reduce((s, v) => s + v, 0);
-          const last3 = months.slice(-3);
+          // Exclude current in-flight (partial) month from baseline avg — keep in monthlyActuals for charts
+          const completeMonths = months.filter(m => m < currentMonthStr);
+          const baselineMonths = completeMonths.length > 0 ? completeMonths : months;
+          const t12m = baselineMonths.reduce((s, m) => s + (monthData[m] || 0), 0);
+          const last3 = baselineMonths.slice(-3);
           const t3m = last3.reduce((s, m) => s + (monthData[m] || 0), 0);
-          return { domain, monthlyActuals: monthData, t12m, t3m, avgMonthly: t12m / Math.max(months.length, 1) };
+          return { domain, monthlyActuals: monthData, monthlyDbus: domainDbus[domain] || {}, t12m, t3m, avgMonthly: t12m / Math.max(baselineMonths.length, 1) };
         })
         .sort((a, b) => b.t12m - a.t12m);
       setDomainBaselines(baselines);
@@ -357,7 +373,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
   const loadScenarioSettings = async (s: number, currentUCs: NewUseCase[]) => {
     try {
       const data = await fetchScenario(account, s);
-      setBaselineGrowthRate((data.baseline_growth_rate || 0.02) * 100);
+      setBaselineGrowthRate((data.baseline_growth_rate || 0.005) * 100);
+      setBaselineAdjustment((data.baseline_adjustment || 0) * 100);
       setAssumptionsText(data.assumptions_text || '');
       const ovMap: Record<number, number> = {};
       (data.baseline_overrides || []).forEach((o: any) => { ovMap[o.month_index] = o.value; });
@@ -365,7 +382,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
       setVersion(data.version || 0);
       // If the new scenario has no use cases saved yet, propagate current ones to it
       if ((data.new_use_cases || []).length === 0 && currentUCs.length > 0) {
-        const res = await saveScenario({ scenario_id: s, account, baseline_growth_rate: (data.baseline_growth_rate || 0.02), assumptions_text: data.assumptions_text || '', new_use_cases: currentUCs, version: data.version || 0 });
+        const res = await saveScenario({ scenario_id: s, account, baseline_growth_rate: (data.baseline_growth_rate || 0.005), baseline_adjustment: data.baseline_adjustment || 0, assumptions_text: data.assumptions_text || '', new_use_cases: currentUCs, version: data.version || 0 });
         setVersion(res.version);
       }
     } catch (e) {
@@ -382,7 +399,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
     if (!loading) {
       try {
         const overridesArr = Object.entries(baselineOverrides).map(([k, v]) => ({ month_index: Number(k), value: v }));
-      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
+      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, baseline_adjustment: baselineAdjustment / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
         setVersion(res.version);
       } catch (e) {
         if (e instanceof ConflictError) { setConflictError(true); return; }
@@ -412,7 +429,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
     try {
       const overridesArr = Object.entries(baselineOverrides).map(([k, v]) => ({ month_index: Number(k), value: v }));
       // Save current scenario
-      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
+      const res = await saveScenario({ scenario_id: scenario, account, baseline_growth_rate: baselineGrowthRate / 100, baseline_adjustment: baselineAdjustment / 100, assumptions_text: assumptionsText, new_use_cases: newUseCases, baseline_overrides: overridesArr, version });
       setVersion(res.version);
 
       // Propagate updated UC list to the other 2 scenario files so all scenarios stay in sync.
@@ -424,7 +441,8 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
           const other = await fetchScenario(account, s);
           await saveScenario({
             scenario_id: s, account,
-            baseline_growth_rate: other.baseline_growth_rate ?? 0.02,
+            baseline_growth_rate: other.baseline_growth_rate ?? 0.005,
+            baseline_adjustment: other.baseline_adjustment ?? 0,
             assumptions_text: other.assumptions_text ?? '',
             new_use_cases: newUseCases,
             baseline_overrides: other.baseline_overrides ?? [],
@@ -532,7 +550,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
       await Promise.all(others.map(async (s) => {
         try {
           const other = await fetchScenario(account, s);
-          await saveScenario({ scenario_id: s, account, baseline_growth_rate: other.baseline_growth_rate ?? 0.02, assumptions_text: other.assumptions_text ?? '', new_use_cases: updated, baseline_overrides: other.baseline_overrides ?? [], version: other.version ?? 0 });
+          await saveScenario({ scenario_id: s, account, baseline_growth_rate: other.baseline_growth_rate ?? 0.005, baseline_adjustment: other.baseline_adjustment ?? 0, assumptions_text: other.assumptions_text ?? '', new_use_cases: updated, baseline_overrides: other.baseline_overrides ?? [], version: other.version ?? 0 });
         } catch (e) { console.warn(`Could not sync UC removal to scenario ${s}:`, e); }
       }));
       setSaved(true);
@@ -692,17 +710,61 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
 
   // Projections
   const projections = React.useMemo(() => {
-    const momRate = baselineGrowthRate / 100 / 12;
-    // Use same avg as backend: total T12M / unique months (not per-domain avg sum)
-    const allHistoricalMonths = new Set(domainBaselines.flatMap(b => Object.keys(b.monthlyActuals)));
-    const totalT12m = domainBaselines.reduce((s, b) => s + b.t12m, 0);
-    const totalBaselineMonthly = totalT12m / Math.max(allHistoricalMonths.size, 1);
+    const momRate = baselineGrowthRate / 100;
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
 
-    // Baseline projection (all historical consumption with growth, overrides applied)
+    // Find last complete (non-partial) month
+    const allDataMonths = new Set(domainBaselines.flatMap(b => Object.keys(b.monthlyActuals)));
+    const sortedCompleteMonths = [...allDataMonths].filter(m => m < currentMonthStr).sort();
+    const partialMonthInData = [...allDataMonths].some(m => m >= currentMonthStr);
+    // Fallback: if no complete months, use all available months
+    const useMonths = sortedCompleteMonths.length > 0
+      ? sortedCompleteMonths
+      : [...allDataMonths].sort();
+    const lastCompleteMonth = useMonths[useMonths.length - 1] || '';
+
+    // Last complete month's total value (sum across all domains) — both $ and DBU
+    const lastCompleteValue = lastCompleteMonth
+      ? domainBaselines.reduce((s, b) => s + (b.monthlyActuals[lastCompleteMonth] || 0), 0)
+      : 0;
+    const lastCompleteDbu = lastCompleteMonth
+      ? domainBaselines.reduce((s, b) => s + (b.monthlyDbus[lastCompleteMonth] || 0), 0)
+      : 0;
+
+    // Apply user-specified level adjustment (e.g., +10% or -10%) to both $ and DBU
+    const adjustedBase = lastCompleteValue * (1 + baselineAdjustment / 100);
+    const adjustedBaseDbu = lastCompleteDbu * (1 + baselineAdjustment / 100);
+
+    // n_offset: months from lastCompleteMonth to contract M1
+    // e.g., last complete = "2026-02", contract starts "2026-06" → n_offset = 4
+    // M1 = adjustedBase × (1+r)^4, M2 = adjustedBase × (1+r)^5, etc.
+    const contractStart = contractStartDate || (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() + 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    })();
+    let nOffset = 0;
+    if (lastCompleteMonth && contractStart) {
+      const [fy, fm] = lastCompleteMonth.split('-').map(Number);
+      const [ty, tm] = contractStart.split('-').map(Number);
+      nOffset = Math.max((ty * 12 + tm) - (fy * 12 + fm), 0);
+    }
+
+    // Baseline: grow from last complete month forward (gap bridging + contract period)
+    // overrides store %, applied equally to both $ and DBU — no rate conversion needed
     const baselineMonths = new Array(contractMonths).fill(0);
+    const baselineDbuMonths = new Array(contractMonths).fill(0);
     for (let i = 0; i < contractMonths; i++) {
-      const computed = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
-      baselineMonths[i] = i in baselineOverrides ? baselineOverrides[i] : computed;
+      const computedDollar = adjustedBase * Math.pow(1 + momRate, nOffset + i);
+      const computedDbu = adjustedBaseDbu * Math.pow(1 + momRate, nOffset + i);
+      if (i in baselineOverrides) {
+        const pct = baselineOverrides[i]; // % value, e.g. -10 for -10%
+        baselineMonths[i] = computedDollar * (1 + pct / 100);
+        baselineDbuMonths[i] = computedDbu * (1 + pct / 100);
+      } else {
+        baselineMonths[i] = computedDollar;
+        baselineDbuMonths[i] = computedDbu;
+      }
     }
 
     // New use case projections (only for current scenario)
@@ -712,7 +774,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
       for (let i = 0; i < contractMonths; i++) ucMonths[i] += ucM[i];
     });
 
-    // Totals
+    // Year totals
     const totalMonths = baselineMonths.map((b, i) => b + ucMonths[i]);
     const yearTotals = new Array(numYears).fill(0);
     const baseYearTotals = new Array(numYears).fill(0);
@@ -724,8 +786,12 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
       ucYearTotals[y] += ucMonths[i];
     }
 
-    return { baselineMonths, ucMonths, totalMonths, yearTotals, baseYearTotals, ucYearTotals };
-  }, [domainBaselines, baselineGrowthRate, activeUseCases, baselineOverrides, contractMonths]);
+    return {
+      baselineMonths, baselineDbuMonths, ucMonths, totalMonths, yearTotals, baseYearTotals, ucYearTotals,
+      lastCompleteMonth, lastCompleteValue, lastCompleteDbu, adjustedBase, adjustedBaseDbu, nOffset,
+      momRate, partialMonthInData, currentMonthStr, sortedCompleteMonths, contractStart,
+    };
+  }, [domainBaselines, baselineGrowthRate, baselineAdjustment, contractStartDate, activeUseCases, baselineOverrides, contractMonths]);
 
   const totalBaseline = domainBaselines.reduce((s, b) => s + b.t12m, 0);
 
@@ -1119,16 +1185,63 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
             {/* Growth + Assumptions */}
             <div className="bg-white rounded-lg shadow p-4 space-y-4">
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">Baseline Growth Rate (Applied to All Historical Consumption)</h3>
-                <div className="flex items-center gap-3">
-                  <input type="number" step="0.5" value={baselineGrowthRate}
-                    onChange={(e) => { setIsDirty(true); setBaselineGrowthRate(parseFloat(e.target.value) || 0); }}
-                    className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-right" />
-                  <span className="text-sm text-gray-500">% Annual</span>
-                  <span className="text-xs text-gray-400">
-                    ≈ {(baselineGrowthRate / 12).toFixed(2)}% MoM compound
-                  </span>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Baseline Organic Growth Rate</h3>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <input type="number" step="0.001" value={baselineGrowthRate}
+                      onChange={(e) => { setIsDirty(true); setBaselineGrowthRate(parseFloat(e.target.value) || 0); }}
+                      className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-right" />
+                    <span className="text-sm text-gray-500">% MoM</span>
+                    <span className="text-xs text-gray-400">≈ {((Math.pow(1 + baselineGrowthRate / 100, 12) - 1) * 100).toFixed(1)}% annual</span>
+                  </div>
+                  <div className="flex items-center gap-2 ml-4 border-l pl-4">
+                    <span className="text-sm text-gray-500">Baseline level adjust</span>
+                    <input type="number" step="1" value={baselineAdjustment}
+                      onChange={(e) => { setIsDirty(true); setBaselineAdjustment(parseFloat(e.target.value) || 0); }}
+                      className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm text-right" />
+                    <span className="text-sm text-gray-500">%</span>
+                    <span className="text-xs text-gray-400">(e.g. +10 or -10 to adjust starting point)</span>
+                  </div>
                 </div>
+                {/* M1 transparency panel */}
+                {projections.lastCompleteValue > 0 && (
+                  <div className="mt-2 bg-blue-50 border border-blue-100 rounded px-3 py-2 text-xs text-blue-800 space-y-0.5">
+                    {projections.partialMonthInData && (
+                      <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 mb-1">
+                        ⚠ <span className="font-semibold">{projections.currentMonthStr} excluded</span> — partial month. Using last complete month: <span className="font-semibold">{projections.lastCompleteMonth}</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const fmtDbuFull = (v: number) => `${Math.round(v).toLocaleString()} DBU`;
+                      const m1Dollar = projections.adjustedBase * Math.pow(1 + projections.momRate, projections.nOffset);
+                      const m1Dbu = projections.adjustedBaseDbu * Math.pow(1 + projections.momRate, projections.nOffset);
+                      return (<>
+                        <div>
+                          <span className="font-medium">Last complete month ({projections.lastCompleteMonth}):</span>{' '}
+                          {formatCurrencyFull(projections.lastCompleteValue)} / {fmtDbuFull(projections.lastCompleteDbu)}
+                          {baselineAdjustment !== 0 && (
+                            <span className="ml-2 text-blue-600">
+                              → level-adjusted: {formatCurrencyFull(projections.adjustedBase)} / {fmtDbuFull(projections.adjustedBaseDbu)}{' '}
+                              ({baselineAdjustment > 0 ? '+' : ''}{baselineAdjustment}%)
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="font-medium">Contract starts:</span>{' '}
+                          {projections.contractStart}
+                          {projections.nOffset > 0 && (
+                            <span className="text-blue-600 ml-1">({projections.nOffset} month{projections.nOffset > 1 ? 's' : ''} forward from {projections.lastCompleteMonth})</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="font-medium">M1 ({projections.contractStart}):</span>{' '}
+                          {formatCurrencyFull(m1Dollar)} / {fmtDbuFull(m1Dbu)}
+                          {' '}= {formatCurrencyFull(projections.adjustedBase)} × (1+{baselineGrowthRate}%)^{projections.nOffset}
+                        </div>
+                      </>);
+                    })()}
+                  </div>
+                )}
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">Assumptions</h3>
@@ -1170,79 +1283,54 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
             </button>
             {expandedOverrides && (
               <div className="border-t px-4 py-4">
-                {/* Mode toggle */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[11px] text-gray-500 font-medium">Input mode:</span>
-                  <div className="flex rounded border border-gray-200 overflow-hidden text-xs">
-                    <button
-                      onClick={() => setOverrideMode('absolute')}
-                      className={`px-2.5 py-1 font-medium transition-colors ${overrideMode === 'absolute' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                    >
-                      $ Value
-                    </button>
-                    <button
-                      onClick={() => setOverrideMode('percent')}
-                      className={`px-2.5 py-1 font-medium transition-colors ${overrideMode === 'percent' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                    >
-                      % Adjust
-                    </button>
-                  </div>
-                  <span className="text-[10px] text-gray-400">
-                    {overrideMode === 'percent' ? 'Enter +10 for +10% or -10 for -10% of projected value' : 'Enter absolute dollar amount'}
-                  </span>
-                </div>
+                <p className="text-[10px] text-gray-500 mb-3">
+                  Enter a % adjustment per month (e.g. <span className="font-mono">+10</span> or <span className="font-mono">-10</span>). Applied equally to both $DBU and DBU. Leave blank to use computed projection.
+                </p>
                 <div className="overflow-x-auto">
                   <div className="flex gap-1 pb-2" style={{ minWidth: 'max-content' }}>
                     {Array.from({ length: contractMonths }, (_, i) => {
                       const monthLabel = getMonthLabel(i + 1, contractStartDate);
                       const isOverridden = i in baselineOverrides;
-                      const allHM = new Set(domainBaselines.flatMap(b => Object.keys(b.monthlyActuals)));
-                      const totT12m = domainBaselines.reduce((s, b) => s + b.t12m, 0);
-                      const totalBaselineMonthly = totT12m / Math.max(allHM.size, 1);
-                      const momRate = baselineGrowthRate / 100 / 12;
-                      const computed = totalBaselineMonthly * Math.pow(1 + momRate, i + 1);
-                      // In % mode: display the % delta from computed; in absolute mode: display the raw value
-                      const pctDelta = isOverridden ? Math.round((baselineOverrides[i] / computed - 1) * 100) : undefined;
-                      const displayValue = overrideMode === 'percent'
-                        ? (isOverridden ? pctDelta : '')
-                        : (isOverridden ? baselineOverrides[i] : '');
+                      const pct = isOverridden ? baselineOverrides[i] : undefined;
+                      const computedDollar = projections.adjustedBase * Math.pow(1 + projections.momRate, projections.nOffset + i);
+                      const computedDbu = projections.adjustedBaseDbu * Math.pow(1 + projections.momRate, projections.nOffset + i);
+                      const effectiveDollar = pct !== undefined ? computedDollar * (1 + pct / 100) : computedDollar;
+                      const effectiveDbu = pct !== undefined ? computedDbu * (1 + pct / 100) : computedDbu;
                       return (
-                        <div key={i} className="flex flex-col items-center" style={{ minWidth: 72 }}>
+                        <div key={i} className="flex flex-col items-center" style={{ minWidth: 80 }}>
                           <div className="text-[9px] text-gray-400 text-center mb-1 leading-tight whitespace-pre-line">
                             {monthLabel.replace(' (', '\n(').replace(')', '')}
                           </div>
-                          <input
-                            type="number"
-                            value={displayValue as number | string}
-                            placeholder={overrideMode === 'percent' ? '0' : Math.round(computed).toLocaleString()}
-                            onChange={(e) => {
-                              setIsDirty(true);
-                              const val = e.target.value.trim();
-                              if (val === '') {
-                                const next = { ...baselineOverrides };
-                                delete next[i];
-                                setBaselineOverrides(next);
-                              } else if (overrideMode === 'percent') {
-                                const pct = parseFloat(val) || 0;
-                                setBaselineOverrides(prev => ({ ...prev, [i]: Math.round(computed * (1 + pct / 100)) }));
-                              } else {
-                                setBaselineOverrides(prev => ({ ...prev, [i]: parseFloat(val) || 0 }));
-                              }
-                            }}
-                            className={`w-full text-xs text-right rounded border px-1 py-1 font-mono focus:outline-none focus:ring-1 ${
-                              isOverridden
-                                ? 'bg-amber-50 border-amber-400 text-amber-900 font-semibold focus:ring-amber-400'
-                                : 'bg-white border-gray-200 text-gray-400 focus:ring-blue-400'
-                            }`}
-                          />
-                          {/* In % mode show the resulting absolute value; in absolute mode show % delta */}
-                          {isOverridden && (
-                            <div className="text-[8px] text-amber-700 text-center mt-0.5 leading-tight">
-                              {overrideMode === 'percent'
-                                ? `$${Math.round(baselineOverrides[i] / 1000)}K`
-                                : `${pctDelta !== undefined && pctDelta >= 0 ? '+' : ''}${pctDelta}%`}
-                            </div>
-                          )}
+                          {/* % input */}
+                          <div className="relative w-full">
+                            <input
+                              type="number"
+                              value={pct ?? ''}
+                              placeholder="0"
+                              onChange={(e) => {
+                                setIsDirty(true);
+                                const val = e.target.value.trim();
+                                if (val === '') {
+                                  const next = { ...baselineOverrides };
+                                  delete next[i];
+                                  setBaselineOverrides(next);
+                                } else {
+                                  setBaselineOverrides(prev => ({ ...prev, [i]: parseFloat(val) || 0 }));
+                                }
+                              }}
+                              className={`w-full text-xs text-right rounded border px-1 py-1 font-mono focus:outline-none focus:ring-1 ${
+                                isOverridden
+                                  ? 'bg-amber-50 border-amber-400 text-amber-900 font-semibold focus:ring-amber-400'
+                                  : 'bg-white border-gray-200 text-gray-400 focus:ring-blue-400'
+                              }`}
+                            />
+                            <span className="absolute right-1 top-1 text-[9px] text-gray-400 pointer-events-none">%</span>
+                          </div>
+                          {/* Show both $ and DBU — amber when overridden */}
+                          <div className={`text-[8px] text-center mt-0.5 leading-tight ${isOverridden ? 'text-amber-700 font-semibold' : 'text-gray-400'}`}>
+                            <div>${Math.round(effectiveDollar / 1000)}K</div>
+                            <div>{Math.round(effectiveDbu / 1000)}K DBU</div>
+                          </div>
                           {isOverridden && (
                             <button
                               onClick={() => {
@@ -1263,10 +1351,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-400 mt-2">
-                  {overrideMode === 'percent'
-                    ? 'Enter a % adjustment (e.g. +10 or -10) to set that month relative to the projected baseline. The absolute $ result is shown below each cell.'
-                    : 'Type an absolute dollar value to override that month\'s baseline. Leave blank to use the computed growth-rate projection.'}
-                  {' '}Clear individual cells with ✕ reset or use Clear All above.
+                  Clear individual cells with ✕ reset or use Clear All above.
                 </p>
               </div>
             )}
@@ -1289,7 +1374,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
               </thead>
               <tbody>
                 <tr className="border-t hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium sticky left-0 bg-white">Existing Baseline (with {baselineGrowthRate}% annual growth)</td>
+                  <td className="px-3 py-2 font-medium sticky left-0 bg-white">Existing Baseline ({baselineGrowthRate}% MoM growth{baselineAdjustment !== 0 ? `, ${baselineAdjustment > 0 ? '+' : ''}${baselineAdjustment}% level adj` : ''})</td>
                   {projections.baseYearTotals.map((v, yi) => (
                     <td key={yi} className="px-3 py-2 text-right">{formatCurrency(v)}</td>
                   ))}

@@ -11,7 +11,7 @@ echo ""
 # Start backend
 echo "Starting FastAPI backend..."
 cd "$DIR/server"
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 &
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 &
 BACKEND_PID=$!
 
 # Start frontend

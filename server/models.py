@@ -5,7 +5,8 @@ from typing import Optional
 class ScenarioAssumptions(BaseModel):
     scenario_id: int  # 1, 2, or 3
     account: str
-    baseline_growth_rate: float = 0.02  # MoM growth rate (e.g., 0.02 = 2%)
+    baseline_growth_rate: float = 0.005  # MoM growth rate (e.g., 0.005 = 0.5% MoM)
+    baseline_adjustment: float = 0.0  # level adjustment to avg_monthly before compounding (+0.10 = +10%)
     growth_rates: dict[str, float] = {}  # legacy: domain -> growth rate (optional)
     assumptions_text: str = ""
     new_use_cases: list[dict] = []  # [{id, name, domain, steadyStateDbu, onboardingMonth, liveMonth, rampType, scenarios}]

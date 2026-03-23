@@ -28,12 +28,13 @@ export interface ScenarioExportData {
   assumptions: string;
   baselineGrowthRate: number;
   activeUseCases: UseCase[];
-  baselineMonths: number[];
+  baselineMonths: number[];       // $DBU projected baseline (overrides applied)
+  baselineDbuMonths: number[];    // DBU projected baseline (same % overrides applied, no rate conversion)
   totalMonths: number[];
   baseYearTotals: number[];
   ucYearTotals: number[];
   yearTotals: number[];
-  baselineOverrides?: Record<number, number>; // monthIndex(0-35) -> overridden value
+  baselineOverrides?: Record<number, number>; // monthIndex -> % adjustment
 }
 
 export interface AccountExportData {
@@ -371,7 +372,7 @@ function buildProjectionSheetMulti(
 
     const acctUcRows: Array<{ name: string; rowNum: number }> = [];
 
-    const { activeUseCases, baselineMonths, totalMonths,
+    const { activeUseCases, baselineMonths, baselineDbuMonths, totalMonths,
             baseYearTotals, ucYearTotals, yearTotals,
             baselineGrowthRate, assumptions, baselineOverrides } = sd;
     const overriddenMonths = new Set(Object.keys(baselineOverrides || {}).map(Number));
@@ -392,7 +393,7 @@ function buildProjectionSheetMulti(
     // Account section header band
     ws.addRow([]);
     const acctRow = ws.addRow([
-      `${ad.accountName.toUpperCase()}  ·  Growth: ${baselineGrowthRate.toFixed(1)}% Annual` +
+      `${ad.accountName.toUpperCase()}  ·  Growth: ${baselineGrowthRate.toFixed(2)}% MoM` +
       (assumptions ? `  ·  ${assumptions}` : '')
     ]);
     acctRow.height = 22;
@@ -423,7 +424,8 @@ function buildProjectionSheetMulti(
 
     // Collect UC data so we can reuse it for the DBU group
     const ucMonthTotals = new Array(36).fill(0);
-    type UcItem = { label: string; months: number[]; bgIdx: number; rate: number; skus: Array<{ label: string; skuName: string; months: number[]; rate: number }> };
+    // dbuMonths: pre-computed DBU array — ramp uses blended rate, adhoc uses dbuPerMonth directly
+    type UcItem = { label: string; months: number[]; dbuMonths: number[]; bgIdx: number; rate: number; skus: Array<{ label: string; skuName: string; months: number[]; rate: number }> };
     const ucItems: UcItem[] = [];
 
     activeUseCases.forEach((uc, idx) => {
@@ -442,6 +444,28 @@ function buildProjectionSheetMulti(
         const totalDbu    = uc.skuBreakdown.reduce((s, sk) => s + sk.dbus, 0);
         if (totalDollar > 0 && totalDbu > 0) ucRate = totalDbu / totalDollar;
       }
+
+      // Build per-month adhoc dollar and DBU arrays so adhoc DBU uses dbuPerMonth directly
+      const adhocDollarByMonth = new Array(mp.length).fill(0);
+      const adhocDbuByMonth = new Array(mp.length).fill(0);
+      (uc.adhocPeriods || []).forEach(period => {
+        period.months.forEach(m => {
+          if (m >= 1 && m <= mp.length) {
+            const periodDollar = period.skuAmounts.reduce((s, sa) => s + (sa.dollarPerMonth || 0), 0);
+            const periodDbu = period.skuAmounts.reduce((s, sa) => s + (sa.dbuPerMonth || 0), 0);
+            adhocDollarByMonth[m - 1] += periodDollar;
+            adhocDbuByMonth[m - 1] += periodDbu;
+          }
+        });
+      });
+
+      // Pre-compute DBU months: ramp portion uses blended rate, adhoc uses direct dbuPerMonth
+      const dbuMonths = uc.upliftOnly
+        ? new Array(mp.length).fill(0)
+        : mp.map((v, i) => {
+            const rampDollar = v - adhocDollarByMonth[i];
+            return Math.round(rampDollar * ucRate + adhocDbuByMonth[i]);
+          });
 
       const skus: Array<{ label: string; skuName: string; months: number[]; rate: number }> = [];
       if (!uc.upliftOnly && uc.skuBreakdown?.length) {
@@ -466,7 +490,7 @@ function buildProjectionSheetMulti(
           );
         });
       }
-      ucItems.push({ label: ucLabel, months: uc.upliftOnly ? new Array(mp.length).fill(0) : mp, bgIdx: idx, rate: ucRate, skus });
+      ucItems.push({ label: ucLabel, months: uc.upliftOnly ? new Array(mp.length).fill(0) : mp, dbuMonths, bgIdx: idx, rate: ucRate, skus });
     });
 
     if (activeUseCases.length > 0) {
@@ -494,7 +518,8 @@ function buildProjectionSheetMulti(
     ws.addRow([]);
     addGroupHeader('  DBUs — Monthly Consumption', 'D1FAE5', '065F46');
 
-    const baselineDbuRow = addDbuRow('Baseline (Existing Consumption) — DBUs', baselineMonths, 'F3F4F6', 0);
+    // baselineDbuMonths already contains actual DBU values (no rate conversion — same % overrides applied)
+    const baselineDbuRow = addDbuRow('Baseline (Existing Consumption) — DBUs', baselineDbuMonths ?? baselineMonths, 'F3F4F6', 1);
     if (overriddenMonths.size > 0) {
       overriddenMonths.forEach(mi => {
         const cell = baselineDbuRow.getCell(mi + 4);
@@ -503,14 +528,19 @@ function buildProjectionSheetMulti(
       });
     }
 
-    ucItems.forEach(({ label, months, bgIdx, rate, skus }) => {
-      addDbuRow(`${label} — DBUs`, months, bgIdx % 2 === 0 ? 'F9FAFB' : 'FFFFFF', 1, rate);
+    ucItems.forEach(({ label, dbuMonths, bgIdx, rate, skus }) => {
+      // dbuMonths is pre-computed (ramp × rate + adhoc dbuPerMonth), so pass rate=1 to addDbuRow
+      addDbuRow(`${label} — DBUs`, dbuMonths, bgIdx % 2 === 0 ? 'F9FAFB' : 'FFFFFF', 1, 1);
       skus.forEach(sku => addDbuRow('', sku.months, 'F9FAFB', 0, sku.rate, `└─ ${sku.skuName} — DBUs`));
     });
 
     if (activeUseCases.length > 0) {
-      const dbuSubRow = addDbuRow('New Use Cases Subtotal — DBUs', ucMonthTotals, TOTAL_BG, 0);
-      const dbuGtRow = addDbuRow(`Grand Total (${ad.accountName}) — DBUs`, totalMonths, GRAND_BG, 0);
+      // Sum pre-computed UC DBU monthly arrays for subtotal/grand total
+      const ucDbuMonthTotals = new Array(36).fill(0);
+      ucItems.forEach(({ dbuMonths }) => dbuMonths.forEach((v, i) => { if (i < 36) ucDbuMonthTotals[i] += v; }));
+      const totalDbuMonths = (baselineDbuMonths ?? new Array(36).fill(0)).map((v, i) => v + (ucDbuMonthTotals[i] || 0));
+      const dbuSubRow = addDbuRow('New Use Cases Subtotal — DBUs', ucDbuMonthTotals, TOTAL_BG, 0, 1);
+      const dbuGtRow = addDbuRow(`Grand Total (${ad.accountName}) — DBUs`, totalDbuMonths, GRAND_BG, 0, 1);
       const dbuBaseRN = baselineDbuRow.number;
       const dbuSubRN = dbuSubRow.number;
       for (let c = 4; c <= 43; c++) {
@@ -544,26 +574,19 @@ function buildProjectionSheetMulti(
     const yData = [baseYearTotals, ucYearTotals, yearTotals];
     const yBgs = [TOTAL_BG, 'E0F2FE', GRAND_BG];
 
-    // Compute per-year blended DBU rate for the UC total (from per-UC skuBreakdown)
-    // Baseline uses flat DBU_RATE; UCs use their own rates weighted by dollar volume
+    // Baseline year DBUs — from actual baselineDbuMonths (no rate conversion)
+    const baseYearDbus = [0, 0, 0];
+    (baselineDbuMonths ?? []).forEach((v, i) => {
+      if (i < 36) baseYearDbus[Math.floor(i / 12)] += v;
+    });
+
+    // UC year DBUs — use pre-computed dbuMonths (ramp × rate + adhoc dbuPerMonth directly)
     const ucYearDbus = [0, 0, 0];
-    activeUseCases.forEach(uc => {
-      if (uc.upliftOnly) return;
-      let rate = DBU_RATE;
-      if (uc.skuBreakdown?.length) {
-        const td = uc.skuBreakdown.reduce((s: number, sk: any) => s + sk.dollarDbu, 0);
-        const tu = uc.skuBreakdown.reduce((s: number, sk: any) => s + sk.dbus, 0);
-        if (td > 0 && tu > 0) rate = tu / td;
-      }
-      (uc.monthlyProjection || []).forEach((v: number, i: number) => {
-        if (i < 36) ucYearDbus[Math.floor(i / 12)] += v * rate;
+    ucItems.forEach(({ dbuMonths }) => {
+      dbuMonths.forEach((v, i) => {
+        if (i < 36) ucYearDbus[Math.floor(i / 12)] += v;
       });
     });
-    // Per-year rate for UC total; fall back to DBU_RATE if no UC dollars
-    const ucYearRates = ucYearTotals.map((dollars, y) =>
-      dollars > 0 ? ucYearDbus[y] / dollars : DBU_RATE
-    );
-
     // $DBU group first
     let yearBaselineRow = 0, yearNewUcsRow = 0, yearGrandTotalRow = 0;
     yLabels.forEach((label, li) => {
@@ -581,14 +604,13 @@ function buildProjectionSheetMulti(
 
     // DBU group after
     yLabels.forEach((label, li) => {
-      // UC rows: use per-year blended rate; Baseline: flat rate; Grand Total: weighted blend
+      // Baseline: use actual baseYearDbus (no rate conversion)
+      // UC: per-year blended rate from SKU breakdown
+      // Grand Total: baseline DBU + UC DBU
       const dbuVals = yData[li].map((v, y) => {
-        const rate = li === 0 ? DBU_RATE          // Baseline: flat approximation
-          : li === 1 ? ucYearRates[y]             // New Use Cases: blended per-UC rate
-          : (baseYearTotals[y] + ucYearTotals[y]) > 0  // Grand Total: weighted blend
-            ? (baseYearTotals[y] * DBU_RATE + ucYearDbus[y]) / (baseYearTotals[y] + ucYearTotals[y])
-            : DBU_RATE;
-        return Math.round(v * rate);
+        if (li === 0) return Math.round(baseYearDbus[y]);   // Baseline: actual DBUs
+        if (li === 1) return Math.round(ucYearDbus[y]);     // UC: from SKU rates
+        return Math.round(baseYearDbus[y] + ucYearDbus[y]); // Grand Total
       });
       const dbuRow = ws.addRow([`${label} — DBUs`,
         dbuVals[0], dbuVals[1], dbuVals[2],
@@ -1225,7 +1247,7 @@ function buildConsumptionForecastSheet(
     // Account section header
     ws.addRow([]);
     const acctRow = ws.addRow([
-      `${ad.accountName.toUpperCase()}  ·  S${scenarioNum}  ·  Baseline Growth: ${baselineGrowthRate.toFixed(1)}% Annual` +
+      `${ad.accountName.toUpperCase()}  ·  S${scenarioNum}  ·  Baseline Growth: ${baselineGrowthRate.toFixed(2)}% MoM` +
       (assumptions ? `  ·  ${assumptions}` : '')
     ]);
     acctRow.height = 22;

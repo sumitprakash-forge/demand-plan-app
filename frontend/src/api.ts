@@ -45,14 +45,18 @@ export async function uploadConsumptionCSV(account: string, file: File) {
   return res.json();
 }
 
-export async function fetchSummary(account: string, scenario: number, contractMonths = 36) {
-  const res = await fetch(`${BASE}/summary?account=${encodeURIComponent(account)}&scenario=${scenario}&contract_months=${contractMonths}`);
+export async function fetchSummary(account: string, scenario: number, contractMonths = 36, contractStartDate = '') {
+  const params = new URLSearchParams({ account, scenario: String(scenario), contract_months: String(contractMonths) });
+  if (contractStartDate) params.set('contract_start_date', contractStartDate);
+  const res = await fetch(`${BASE}/summary?${params}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function fetchSummaryAll(account: string, contractMonths = 36) {
-  const res = await fetch(`${BASE}/summary-all?account=${encodeURIComponent(account)}&contract_months=${contractMonths}`);
+export async function fetchSummaryAll(account: string, contractMonths = 36, contractStartDate = '') {
+  const params = new URLSearchParams({ account, contract_months: String(contractMonths) });
+  if (contractStartDate) params.set('contract_start_date', contractStartDate);
+  const res = await fetch(`${BASE}/summary-all?${params}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
