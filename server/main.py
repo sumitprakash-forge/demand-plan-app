@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from models import ScenarioAssumptions, ForecastUpdate
 from sheets import fetch_domain_mapping  # kept for legacy; CSV upload is primary path
-from logfood import query_consumption, query_sku_prices, query_contract_health, query_logfood_use_cases
+from logfood import query_consumption, query_sku_prices, query_contract_health, query_sfdc_use_cases
 from sku_mapping import get_friendly_name
 from auth import (
     create_session_token, get_current_user, get_user_data_dir,
@@ -1263,8 +1263,8 @@ async def get_contract_health(
     }
 
 
-# ── Logfood Use Cases (UCOs) ────────────────────────────────────────────────────
-_logfood_ucos_cache: dict[str, list[dict]] = {}
+# ── SFDC Use Cases (UCOs) ────────────────────────────────────────────────────
+_sfdc_ucos_cache: dict[str, list[dict]] = {}
 
 _UCO_CSV_COLUMNS = [
     "Id", "Name", "stage", "use_case_area", "monthly_dollar",
@@ -1273,8 +1273,8 @@ _UCO_CSV_COLUMNS = [
 ]
 
 
-@app.get("/api/logfood-use-cases")
-async def get_logfood_use_cases(
+@app.get("/api/sfdc-use-cases")
+async def get_sfdc_use_cases(
     account: str = Query(default=""),
     user: dict = Depends(get_current_user),
 ):
@@ -1288,13 +1288,13 @@ async def get_logfood_use_cases(
     cache_key = f"{user['sub']}:{account_key}"
 
     # Check in-memory cache first
-    if cache_key in _logfood_ucos_cache:
-        return {"account": account_key, "use_cases": _logfood_ucos_cache[cache_key]}
+    if cache_key in _sfdc_ucos_cache:
+        return {"account": account_key, "use_cases": _sfdc_ucos_cache[cache_key]}
 
     # Check disk cache (covers uploaded data + previously fetched data)
-    stored = _load_json(f"logfood_ucos_{account_key}", ud)
+    stored = _load_json(f"sfdc_ucos_{account_key}", ud)
     if stored is not None:
-        _logfood_ucos_cache[cache_key] = stored
+        _sfdc_ucos_cache[cache_key] = stored
         return {"account": account_key, "use_cases": stored}
 
     # Demo mode with no uploaded data — return empty
@@ -1309,7 +1309,7 @@ async def get_logfood_use_cases(
         import asyncio as _aio
         rows = await _aio.wait_for(
             # Pass account_raw (original case) so SFDC ID resolves correctly
-            _aio.to_thread(query_logfood_use_cases, account_raw, host, token, warehouse_id),
+            _aio.to_thread(query_sfdc_use_cases, account_raw, host, token, warehouse_id),
             timeout=60,
         )
     except TimeoutError:
@@ -1319,13 +1319,13 @@ async def get_logfood_use_cases(
 
     # Only persist non-empty results — empty results might indicate a query glitch
     if rows:
-        _logfood_ucos_cache[cache_key] = rows
-        _save_json(f"logfood_ucos_{account_key}", rows, ud)
+        _sfdc_ucos_cache[cache_key] = rows
+        _save_json(f"sfdc_ucos_{account_key}", rows, ud)
     return {"account": account_key, "use_cases": rows}
 
 
-@app.post("/api/logfood-use-cases/upload")
-async def upload_logfood_use_cases(
+@app.post("/api/sfdc-use-cases/upload")
+async def upload_sfdc_use_cases(
     account: str = Query(...),
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
@@ -1371,8 +1371,8 @@ async def upload_logfood_use_cases(
         })
 
     cache_key = f"{user['sub']}:{account_key}"
-    _logfood_ucos_cache[cache_key] = rows
-    _save_json(f"logfood_ucos_{account_key}", rows, ud)
+    _sfdc_ucos_cache[cache_key] = rows
+    _save_json(f"sfdc_ucos_{account_key}", rows, ud)
 
     return {"status": "ok", "account": account_key, "records": len(rows)}
 

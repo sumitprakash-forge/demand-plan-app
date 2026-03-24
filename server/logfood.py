@@ -248,7 +248,7 @@ ORDER BY u.Stages__c, u.Name
 """
 
 
-def query_logfood_use_cases(account: str, host: str = "", token: str = "", warehouse_id: str = "") -> list[dict]:
+def query_sfdc_use_cases(account: str, host: str = "", token: str = "", warehouse_id: str = "") -> list[dict]:
     """
     Query Salesforce UCOs (U1–U4) for an account from main.sfdc_bronze.usecase__c.
     account can be an account name or SFDC account ID (looked up via account table).

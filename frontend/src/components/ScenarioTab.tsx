@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, fetchLogfoodUseCases, uploadLogfoodUseCases, formatCurrency, formatCurrencyFull, ConflictError } from '../api';
+import { fetchScenario, saveScenario, fetchConsumption, fetchDomainMap, fetchSkuPrices, fetchSfdcUseCases, uploadSfdcUseCases, formatCurrency, formatCurrencyFull, ConflictError } from '../api';
 import type { AccountConfig } from '../App';
 
 interface Props {
@@ -232,9 +232,9 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
   const [innerTab, setInnerTab] = useState<'builder' | 'logfood'>('builder');
 
   // Logfood UCOs
-  const [logfoodUCOs, setLogfoodUCOs] = useState<any[]>([]);
-  const [logfoodUCOsLoading, setLogfoodUCOsLoading] = useState(false);
-  const [logfoodUCOsError, setLogfoodUCOsError] = useState('');
+  const [sfdcUCOs, setLogfoodUCOs] = useState<any[]>([]);
+  const [sfdcUCOsLoading, setLogfoodUCOsLoading] = useState(false);
+  const [sfdcUCOsError, setLogfoodUCOsError] = useState('');
   const [hiddenUCOIds, setHiddenUCOIds] = useState<Set<string>>(new Set());
   const [expandedUCOIds, setExpandedUCOIds] = useState<Set<string>>(new Set());
   const [ucoUploadError, setUcoUploadError] = useState('');
@@ -263,13 +263,13 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
     fetchSkuPrices(account).then(setSkuPriceData).catch(console.error);
   }, [account]);
 
-  // Load Logfood UCOs when switching to the logfood tab
+  // Load SFDC UCOs when switching to the SFDC tab
   useEffect(() => {
     if (innerTab !== 'logfood') return;
-    if (logfoodUCOs.length > 0) return; // already loaded
+    if (sfdcUCOs.length > 0) return; // already loaded
     setLogfoodUCOsLoading(true);
     setLogfoodUCOsError('');
-    fetchLogfoodUseCases(account)
+    fetchSfdcUseCases(account)
       .then(data => setLogfoodUCOs(data.use_cases || []))
       .catch(e => setLogfoodUCOsError(e.message || 'Failed to load UCOs'))
       .finally(() => setLogfoodUCOsLoading(false));
@@ -527,9 +527,9 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
     setShowUCOPicker(true);
     setUcoPickerSearch('');
     // Load UCOs if not yet loaded
-    if (logfoodUCOs.length === 0 && !logfoodUCOsLoading) {
+    if (sfdcUCOs.length === 0 && !sfdcUCOsLoading) {
       setUcoPickerLoading(true);
-      fetchLogfoodUseCases(account)
+      fetchSfdcUseCases(account)
         .then(data => setLogfoodUCOs(data.use_cases || []))
         .catch(e => setLogfoodUCOsError(e.message || 'Failed to load'))
         .finally(() => setUcoPickerLoading(false));
@@ -862,7 +862,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <div>
-                <h3 className="text-sm font-bold text-gray-800">Add Use Case from Logfood</h3>
+                <h3 className="text-sm font-bold text-gray-800">Add Use Case from SFDC</h3>
                 <p className="text-xs text-gray-400 mt-0.5">Select a Salesforce UCO to pre-populate the use case form</p>
               </div>
               <button onClick={() => setShowUCOPicker(false)} className="text-gray-400 hover:text-gray-600 text-lg font-light leading-none">✕</button>
@@ -880,15 +880,15 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
             </div>
             {/* List */}
             <div className="overflow-y-auto flex-1">
-              {(ucoPickerLoading || logfoodUCOsLoading) && (
-                <div className="py-10 text-center text-sm text-gray-500">Loading use cases from Logfood…</div>
+              {(ucoPickerLoading || sfdcUCOsLoading) && (
+                <div className="py-10 text-center text-sm text-gray-500">Loading use cases from SFDC…</div>
               )}
-              {!ucoPickerLoading && !logfoodUCOsLoading && logfoodUCOs.length === 0 && (
-                <div className="py-10 text-center text-sm text-gray-400">No Logfood UCOs loaded. Visit the "Logfood Use Cases" tab first.</div>
+              {!ucoPickerLoading && !sfdcUCOsLoading && sfdcUCOs.length === 0 && (
+                <div className="py-10 text-center text-sm text-gray-400">No SFDC UCOs loaded. Visit the "SFDC Use Cases" tab first.</div>
               )}
-              {!ucoPickerLoading && !logfoodUCOsLoading && logfoodUCOs.length > 0 && (() => {
+              {!ucoPickerLoading && !sfdcUCOsLoading && sfdcUCOs.length > 0 && (() => {
                 const q = ucoPickerSearch.toLowerCase();
-                const filtered = logfoodUCOs.filter(u =>
+                const filtered = sfdcUCOs.filter(u =>
                   !hiddenUCOIds.has(u.Id) &&
                   (!q || u.Name?.toLowerCase().includes(q) || u.use_case_area?.toLowerCase().includes(q) || u.stage?.toLowerCase().includes(q))
                 );
@@ -941,7 +941,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
               })()}
             </div>
             <div className="px-5 py-3 border-t text-xs text-gray-400 flex items-center justify-between">
-              <span>{logfoodUCOs.filter(u => !hiddenUCOIds.has(u.Id)).length} UCOs available · hidden UCOs excluded</span>
+              <span>{sfdcUCOs.filter(u => !hiddenUCOIds.has(u.Id)).length} UCOs available · hidden UCOs excluded</span>
               <button onClick={() => setShowUCOPicker(false)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1 border rounded">Cancel</button>
             </div>
           </div>
@@ -960,18 +960,18 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
           onClick={() => setInnerTab('logfood')}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${innerTab === 'logfood' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Logfood Use Cases
+          SFDC Use Cases
         </button>
       </div>
 
-      {/* Logfood Use Cases tab */}
+      {/* SFDC Use Cases tab */}
       {innerTab === 'logfood' && (
         <div className="bg-white rounded-lg shadow">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <h3 className="text-sm font-semibold text-gray-700">
               Active Use Cases from Salesforce (U1–U4)
-              {logfoodUCOs.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({logfoodUCOs.filter(u => !hiddenUCOIds.has(u.Id)).length} visible · {hiddenUCOIds.size} hidden)</span>}
+              {sfdcUCOs.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">({sfdcUCOs.filter(u => !hiddenUCOIds.has(u.Id)).length} visible · {hiddenUCOIds.size} hidden)</span>}
             </h3>
             <div className="flex items-center gap-3">
               {hiddenUCOIds.size > 0 && (
@@ -995,11 +995,11 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
                   setUcoUploading(true);
                   setUcoUploadError('');
                   try {
-                    const res = await uploadLogfoodUseCases(account, f);
+                    const res = await uploadSfdcUseCases(account, f);
                     // Reload
                     setLogfoodUCOs([]);
                     setLogfoodUCOsLoading(true);
-                    const data = await fetchLogfoodUseCases(account);
+                    const data = await fetchSfdcUseCases(account);
                     setLogfoodUCOs(data.use_cases || []);
                   } catch (err: any) {
                     setUcoUploadError(err.message || 'Upload failed');
@@ -1013,7 +1013,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
           </div>
 
           {/* Upload hint for demo mode */}
-          {isDemo && logfoodUCOs.length === 0 && !logfoodUCOsLoading && (
+          {isDemo && sfdcUCOs.length === 0 && !sfdcUCOsLoading && (
             <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
               <strong>Demo mode:</strong> Upload a JSON file to populate this table.
               Each object must have: <code className="bg-amber-100 px-1 rounded">Id, Name, stage</code> — optional: <code className="bg-amber-100 px-1 rounded">use_case_area, monthly_dollar, t_shirt_size, go_live_date, onboarding_date, solution_architect, status, business_use_case</code>
@@ -1021,12 +1021,12 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
           )}
 
           {ucoUploadError && <div className="px-4 py-2 text-xs text-red-600 bg-red-50 border-b">{ucoUploadError}</div>}
-          {logfoodUCOsLoading && <div className="text-center py-8 text-gray-500 text-sm">Loading use cases from Logfood...</div>}
-          {logfoodUCOsError && <div className="px-4 py-4 text-sm text-red-600">{logfoodUCOsError}</div>}
-          {!logfoodUCOsLoading && !logfoodUCOsError && logfoodUCOs.length === 0 && (
+          {sfdcUCOsLoading && <div className="text-center py-8 text-gray-500 text-sm">Loading use cases from SFDC...</div>}
+          {sfdcUCOsError && <div className="px-4 py-4 text-sm text-red-600">{sfdcUCOsError}</div>}
+          {!sfdcUCOsLoading && !sfdcUCOsError && sfdcUCOs.length === 0 && (
             <div className="px-4 py-8 text-center text-sm text-gray-500">No active U1–U4 use cases found for this account.</div>
           )}
-          {!logfoodUCOsLoading && logfoodUCOs.length > 0 && (
+          {!sfdcUCOsLoading && sfdcUCOs.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1044,7 +1044,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
                   </tr>
                 </thead>
                 <tbody>
-                  {logfoodUCOs.map(uco => {
+                  {sfdcUCOs.map(uco => {
                     const isHidden = hiddenUCOIds.has(uco.Id);
                     const isExpanded = expandedUCOIds.has(uco.Id);
                     const stageBg: Record<string, string> = {
@@ -1436,7 +1436,7 @@ function ScenarioAccountView({ account, contractStartDate, contractMonths = 36, 
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10" />
               </svg>
-              From Logfood
+              From SFDC
             </button>
           </div>
         </div>

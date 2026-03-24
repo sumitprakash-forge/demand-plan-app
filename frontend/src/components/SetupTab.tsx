@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { AccountConfig } from '../App';
-import { uploadDomainMap, fetchDomainMap, fetchWorkspaceList, uploadLogfoodUseCases } from '../api';
+import { uploadDomainMap, fetchDomainMap, fetchWorkspaceList, uploadSfdcUseCases } from '../api';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -885,7 +885,7 @@ function SmokeTestStep({
     if (!acct || !ucoFile) return;
     setUcoLoading(true); setUcoError(''); setUcoResult(null);
     try {
-      const data = await uploadLogfoodUseCases(acct, ucoFile);
+      const data = await uploadSfdcUseCases(acct, ucoFile);
       setUcoResult({ records: data.records });
     } catch (e: any) {
       setUcoError(e.message || 'Upload failed');
@@ -1103,7 +1103,7 @@ function SmokeTestStep({
               Salesforce Use Cases (UCOs) (Optional)
             </p>
             <p className="text-sm text-slate-500">
-              Upload a UCO JSON to populate the Logfood Use Cases panel in Scenario Builder.
+              Upload a UCO JSON to populate the SFDC Use Cases panel in Scenario Builder.
               Required fields: <code className="bg-slate-100 px-1 rounded text-xs">Id</code>, <code className="bg-slate-100 px-1 rounded text-xs">Name</code>, <code className="bg-slate-100 px-1 rounded text-xs">stage</code> (U1–U4).
             </p>
           </div>
@@ -1128,7 +1128,7 @@ function SmokeTestStep({
           {ucoError && <p className="text-sm text-red-600">{ucoError}</p>}
           {ucoResult && (
             <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-              ✓ Loaded <strong>{ucoResult.records}</strong> use cases. Switch to Scenario Builder → Logfood Use Cases to see them.
+              ✓ Loaded <strong>{ucoResult.records}</strong> use cases. Switch to Scenario Builder → SFDC Use Cases to see them.
             </p>
           )}
           <button
