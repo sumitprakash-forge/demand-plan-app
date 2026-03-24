@@ -1,0 +1,490 @@
+{
+  "scenario_id": 3,
+  "account": "kroger",
+  "baseline_growth_rate": 0.005,
+  "baseline_adjustment": 0.0,
+  "growth_rates": {},
+  "assumptions_text": "12 Kroger test use cases covering all computation paths: linear/hockey-stick ramps, multi-SKU blended rates, uplift-only, adhoc periods, overlapping bursts, late starts, and instant-on scenarios.",
+  "new_use_cases": [
+    {
+      "id": "95eb8df4-c506-4e5e-908f-d216950536d9",
+      "name": "Simple ETL \u2014 Linear, Single SKU",
+      "domain": "Data Engineering",
+      "steadyStateDbu": 10000,
+      "onboardingMonth": 1,
+      "liveMonth": 4,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        true,
+        false,
+        false
+      ],
+      "description": "Baseline validation case: simplest possible linear ramp with a single SKU. Y1 = 3-month ramp sum (M1\u2013M3) + 9 months \u00d7 $10K. Any math error in ramp logic shows up here first.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Jobs Compute",
+          "percentage": 100,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "8c6daec2-331e-4be6-92a0-1531221b58f5",
+      "name": "BI Dashboard \u2014 Hockey Stick",
+      "domain": "Analytics",
+      "steadyStateDbu": 15000,
+      "onboardingMonth": 1,
+      "liveMonth": 7,
+      "rampType": "hockey_stick",
+      "cloud": "Azure",
+      "tier": "premium",
+      "scenarios": [
+        true,
+        true,
+        false
+      ],
+      "description": "Validates the non-linear hockey-stick ramp curve: spend follows ss \u00d7 progress^2.5 per month. Slow ramp early, fast acceleration near live date. Also tests Serverless SQL DBU rate (different from Jobs Compute).",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Serverless SQL",
+          "percentage": 100,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "a54af0dd-46e3-4426-9523-8e3a6b6a96a5",
+      "name": "ETL Pipeline \u2014 Multi-SKU",
+      "domain": "Data Engineering",
+      "steadyStateDbu": 20000,
+      "onboardingMonth": 2,
+      "liveMonth": 6,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        true,
+        true,
+        true
+      ],
+      "description": "Tests blended DBU rate across 3 SKUs with different $/DBU prices. Blended rate = \u03a3(dollars) / \u03a3(DBUs) \u2014 not a simple average. Critical for accurate DBU volume when mixing compute types.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Jobs Compute",
+          "percentage": 50,
+          "overridePrice": null
+        },
+        {
+          "sku": "Jobs Compute (Photon)",
+          "percentage": 30,
+          "overridePrice": null
+        },
+        {
+          "sku": "DLT Core",
+          "percentage": 20,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "db44e57d-0f51-44ca-9727-b5fb3f1cd863",
+      "name": "ML Platform \u2014 All Scenarios",
+      "domain": "AI/ML",
+      "steadyStateDbu": 50000,
+      "onboardingMonth": 3,
+      "liveMonth": 9,
+      "rampType": "linear",
+      "cloud": "GCP",
+      "tier": "enterprise",
+      "scenarios": [
+        true,
+        true,
+        true
+      ],
+      "description": "Enterprise tier pricing (higher $/DBU than Premium on AWS). 4-SKU blended rate with late onboarding (M1\u2013M2 = $0, ramp starts M3). Validates that Enterprise tier price table is used, not Premium.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "All Purpose Compute",
+          "percentage": 35,
+          "overridePrice": null
+        },
+        {
+          "sku": "Model Serving",
+          "percentage": 30,
+          "overridePrice": null
+        },
+        {
+          "sku": "Jobs Compute",
+          "percentage": 25,
+          "overridePrice": null
+        },
+        {
+          "sku": "Serverless SQL",
+          "percentage": 10,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "093ecd87-1fdc-4351-a54e-278e7a3ba4ac",
+      "name": "Serverless Migration Uplift",
+      "domain": "Platform",
+      "steadyStateDbu": 8000,
+      "onboardingMonth": 1,
+      "liveMonth": 3,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        false,
+        true,
+        false
+      ],
+      "description": "Dollar Uplift Only mode: models a Serverless pricing migration where existing workloads move to Serverless pricing, increasing $/DBU but not adding new DBU volume. $DBU columns show uplift correctly; DBU volume = 0 everywhere. Critical for not inflating DBU totals during pricing transitions.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Serverless SQL",
+          "percentage": 100,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": true,
+      "adhocPeriods": []
+    },
+    {
+      "id": "d117e270-7228-4a25-b9de-859eb4deb53d",
+      "name": "Data Migration \u2014 Adhoc Burst",
+      "domain": "Data Engineering",
+      "steadyStateDbu": 1,
+      "onboardingMonth": 1,
+      "liveMonth": 1,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        true,
+        false,
+        false
+      ],
+      "description": "Pure adhoc scenario \u2014 no meaningful steady-state ramp. $ and DBU come entirely from the adhoc sprint period, not rate-converted from $. Validates that dollarPerMonth and dbuPerMonth are used directly for adhoc rows, and that forecast \u26a1 sub-rows and totals include them correctly.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Jobs Compute",
+          "percentage": 100,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": [
+        {
+          "id": "f8776b6e-4bcd-4585-84cd-8b220c5e20ba",
+          "label": "Migration Sprint",
+          "months": [
+            1,
+            2,
+            3
+          ],
+          "skuAmounts": [
+            {
+              "sku": "Jobs Compute",
+              "dollarPerMonth": 5000,
+              "dbuPerMonth": 33333
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "a1136a38-7918-4e5a-be6f-ae402ed83614",
+      "name": "Platform Expansion \u2014 Ramp + Dev Phase",
+      "domain": "AI/ML",
+      "steadyStateDbu": 25000,
+      "onboardingMonth": 4,
+      "liveMonth": 10,
+      "rampType": "hockey_stick",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        true,
+        true,
+        false
+      ],
+      "description": "Most complex computation path: hockey-stick ramp starting M4 PLUS two adhoc periods \u2014 one before the ramp (M1\u2013M3) and one mid-ramp (M5\u2013M6). Both $ and DBU must be correct in all tabs and Excel export. Tests that pre-ramp adhoc and mid-ramp adhoc are correctly additive.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Foundation Model APIs",
+          "percentage": 40,
+          "overridePrice": null
+        },
+        {
+          "sku": "Model Serving",
+          "percentage": 25,
+          "overridePrice": null
+        },
+        {
+          "sku": "Vector Search",
+          "percentage": 20,
+          "overridePrice": null
+        },
+        {
+          "sku": "Serverless SQL",
+          "percentage": 15,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": [
+        {
+          "id": "a24d8a67-0076-45d1-bf35-7ff9d2606a53",
+          "label": "Dev Phase",
+          "months": [
+            1,
+            2,
+            3
+          ],
+          "skuAmounts": [
+            {
+              "sku": "Jobs Compute",
+              "dollarPerMonth": 3000,
+              "dbuPerMonth": 28571
+            }
+          ]
+        },
+        {
+          "id": "2e5fc481-f9ea-46b3-9379-b5d7d5da9c42",
+          "label": "Pilot Acceleration",
+          "months": [
+            5,
+            6
+          ],
+          "skuAmounts": [
+            {
+              "sku": "Jobs Compute",
+              "dollarPerMonth": 7500,
+              "dbuPerMonth": 71428
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "44a3796d-344a-4bc1-acde-9bac2b75d347",
+      "name": "Instant-On \u2014 Already Live",
+      "domain": "Analytics",
+      "steadyStateDbu": 30000,
+      "onboardingMonth": 1,
+      "liveMonth": 1,
+      "rampType": "linear",
+      "cloud": "Azure",
+      "tier": "premium",
+      "scenarios": [
+        false,
+        false,
+        true
+      ],
+      "description": "Edge case: onboarding month = live month (no ramp period). All 36 months should be exactly $30K \u2014 no zero months, no partial ramp. Tests the lm < om guard in ramp logic and instant-on handling.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Serverless SQL",
+          "percentage": 60,
+          "overridePrice": null
+        },
+        {
+          "sku": "SQL Warehouse",
+          "percentage": 40,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "eb3580d2-b87a-488d-a99f-07a382074c77",
+      "name": "Year 3 Expansion",
+      "domain": "Data Engineering",
+      "steadyStateDbu": 40000,
+      "onboardingMonth": 24,
+      "liveMonth": 30,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "enterprise",
+      "scenarios": [
+        true,
+        true,
+        true
+      ],
+      "description": "Late-starting use case: Y1 = $0, Y2 = $0, Y3 = partial ramp (M25\u2013M29) + live months. Tests multi-year projection accuracy for long contract terms. Enterprise tier pricing on AWS. Validates that late onboarding months correctly produce zero contribution in Y1 and Y2.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "DLT Advanced",
+          "percentage": 60,
+          "overridePrice": null
+        },
+        {
+          "sku": "Serverless Jobs",
+          "percentage": 40,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "14a16b07-291b-4085-8270-2d546e47951b",
+      "name": "Custom Workload \u2014 Override Price",
+      "domain": "Platform",
+      "steadyStateDbu": 12000,
+      "onboardingMonth": 2,
+      "liveMonth": 5,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        false,
+        true,
+        false
+      ],
+      "description": "Custom per-SKU price override: the Custom SKU slot uses $0.10/DBU instead of list price. Blended DBU rate = weighted average including the override price, so DBU volume will differ significantly from default list price calculation. Validates that overridePrice is respected in blended rate math.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "All Purpose Compute (Photon)",
+          "percentage": 70,
+          "overridePrice": null
+        },
+        {
+          "sku": "Custom SKU",
+          "percentage": 30,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": []
+    },
+    {
+      "id": "1a75c1a4-584f-419a-b176-08887421dc46",
+      "name": "Concurrent Bursts \u2014 Overlap Test",
+      "domain": "AI/ML",
+      "steadyStateDbu": 18000,
+      "onboardingMonth": 1,
+      "liveMonth": 4,
+      "rampType": "linear",
+      "cloud": "GCP",
+      "tier": "standard",
+      "scenarios": [
+        true,
+        false,
+        false
+      ],
+      "description": "Two adhoc periods with overlapping months (M4 and M5 covered by both). Months 4\u20135 must total $5,000 + 12,500 DBU (additive, not deduped). Validates that multiple adhoc periods in the same month are summed correctly across forecast table, summary, and Excel export.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "All Purpose Compute",
+          "percentage": 100,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": false,
+      "adhocPeriods": [
+        {
+          "id": "43bc6de8-7310-411c-9d81-c6ec098cf3a6",
+          "label": "Sprint A",
+          "months": [
+            3,
+            4,
+            5
+          ],
+          "skuAmounts": [
+            {
+              "sku": "All Purpose Compute",
+              "dollarPerMonth": 2000,
+              "dbuPerMonth": 5000
+            }
+          ]
+        },
+        {
+          "id": "8879c84c-09e5-4774-a64d-ba1b1063e017",
+          "label": "Sprint B",
+          "months": [
+            4,
+            5,
+            6
+          ],
+          "skuAmounts": [
+            {
+              "sku": "All Purpose Compute",
+              "dollarPerMonth": 3000,
+              "dbuPerMonth": 7500
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "d02a3356-4aab-49b0-829b-7e04dd2e52a1",
+      "name": "Serverless Migration + Dev Burst",
+      "domain": "Platform",
+      "steadyStateDbu": 5000,
+      "onboardingMonth": 1,
+      "liveMonth": 2,
+      "rampType": "linear",
+      "cloud": "AWS",
+      "tier": "premium",
+      "scenarios": [
+        true,
+        true,
+        false
+      ],
+      "description": "Most complex edge case: Uplift Only flag combined with an adhoc period in M1. Ramp $ shows correctly; ramp DBU = 0 (uplift only suppresses steady-state DBUs). BUT the adhoc period's DBU (100,000 in M1) must still show \u2014 uplift-only flag must NOT suppress adhoc DBU values.",
+      "assumptions": "",
+      "skuBreakdown": [
+        {
+          "sku": "Serverless SQL",
+          "percentage": 100,
+          "overridePrice": null
+        }
+      ],
+      "upliftOnly": true,
+      "adhocPeriods": [
+        {
+          "id": "21a3551e-8aef-4b88-b9ca-7babd1b92947",
+          "label": "Launch Week",
+          "months": [
+            1
+          ],
+          "skuAmounts": [
+            {
+              "sku": "Jobs Compute",
+              "dollarPerMonth": 10000,
+              "dbuPerMonth": 100000
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "baseline_overrides": [],
+  "serverless_uplift_pct": 0.0,
+  "global_growth_rate": 0.02,
+  "version": 1
+}

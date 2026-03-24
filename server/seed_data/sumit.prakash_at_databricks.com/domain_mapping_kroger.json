@@ -1,0 +1,958 @@
+[
+  {
+    "workspace": "api-testing-workspace",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "aqua-test-dbx",
+    "domain": "untagged"
+  },
+  {
+    "workspace": "bda-polaris-dev-dbxws",
+    "domain": "Polaris"
+  },
+  {
+    "workspace": "bda-polaris-prod-dbxws",
+    "domain": "Polaris"
+  },
+  {
+    "workspace": "bda-polaris-stage-dbxws",
+    "domain": "Polaris"
+  },
+  {
+    "workspace": "bda-polaris-test-dbxws",
+    "domain": "Polaris"
+  },
+  {
+    "workspace": "brand_derivation_adbws",
+    "domain": "untagged"
+  },
+  {
+    "workspace": "ccm-snoflk-cpa-nonprod-eus2-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "ccm-snoflk-cpa-prod-eus2-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "ccm-snoflk-cpa-stage-eus2-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "ccm-snoflk-custdp-nonprod-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "cdp-allblitz-np-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "cdp-daas-dr-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "ce-castula-dev-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "ce-castula-prod-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "ce-castula-stage-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "ce-castula-test-dbxws",
+    "domain": "Castula"
+  },
+  {
+    "workspace": "cpa-dev-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "cpa-prod-eus2-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "cpa-stage-eus2-dbxws",
+    "domain": "Customer Platform Analytics"
+  },
+  {
+    "workspace": "daas-draco-prod-dbxws",
+    "domain": "Data Science"
+  },
+  {
+    "workspace": "daas-draco-stage-dbxws",
+    "domain": "Data Science"
+  },
+  {
+    "workspace": "datamaniacs-nonprod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "datamaniacsrb-nonprod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dbw-cart-stage-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-chkout-prod-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-chkout-stage-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-dbx-invtry-dev-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-dbx-invtry-prod-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-dbx-invtry-stage-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-entpay-diem-dev",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-entpay-diem-prod",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-entpay-diem-stg",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-fraud-dev-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-fraud-prod-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbw-fraud-stage-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dbws-kr-fdp-sb-snd-eus2-general-poc",
+    "domain": "Fulfillment"
+  },
+  {
+    "workspace": "dbx-giftcard-dev-eastus2",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "dbx-giftcard-prod-eastus2",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "dbx-giftcard-proddr-centralus",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "dbx-giftcard-uat-eastus2",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "dbx-giftcard-uatdr-centralus",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "dbx-invtry-dev-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sat-rb-dev-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sat-rb-nonprod-centralus",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sat-rb-nonprod-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sat-rb-prod-centralus",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sat-rb-prod-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sc-fsma-dev-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-sc-fsma-stage-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scg-paip-core-np-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scg-paip-core-p-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scis-instock-dev-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scis-instock-prod-centralus",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scis-instock-prod-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scis-instock-stage-centralus",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scis-instock-stage-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scs-jalapeno-dev-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scs-jlpn-dev-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scs-jlpn-prod-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scs-jlpn-stage-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx-scs-jlpn-test-eus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbx2-scis-instock-stage-eastus2",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "dbxws-8091hcm-nonprod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dbxws-8091hcm-report-prod",
+    "domain": "HR Human Capital Management"
+  },
+  {
+    "workspace": "dgtl-bi-dbw-dev-001",
+    "domain": "Customer Experience"
+  },
+  {
+    "workspace": "dgtl-bi-dbw-prod-001",
+    "domain": "Customer Experience"
+  },
+  {
+    "workspace": "die-etl-pricing-nonprod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "die-etl-pricing-prod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "die-etl-sales-nonprod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "die-etl-sales-prod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "diem-kcms-nonprod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "diem-kcms-prod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "diem-sandbox",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "dmp-5766-dev-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-5766-dev-db1",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-dev-centralus-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-dev-eastus2-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-dq-dev-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-dq-prod-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-dq-test-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-fabric-stage-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-nextgen-pov-databricks-rb",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-nextgen-prod-databricks-rb",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-orion-dev-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-orion-prod-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-orion-stage-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmp-orion-test-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetl-prod-dbxws001",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetl-prod-dbxws002",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetl-prod-dr-dbxws001",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetl-stg-dbxws001",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetl-stg-dbxws002",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetl-stg-dr-dbxws001",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetlingest-pov-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "dmpetlingest-prod-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "ds-vega-dev-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "ds-vega-prod-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "ds-vega-stage-dbxws",
+    "domain": "Data Science - DMP"
+  },
+  {
+    "workspace": "ds-vega-test-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "entdq-dbx-centralus-prod-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "entdq-dbx-centralus-stage-databricks",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "etl-general-nonprod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "etl-general-rb-nonprod-dbxws",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "etl-product",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "etladmin-unitytofile",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "fdp-np-dev-eus2-db-workspace",
+    "domain": "Fulfillment"
+  },
+  {
+    "workspace": "fdp-np-tst-eus2-db-workspace",
+    "domain": "Fulfillment"
+  },
+  {
+    "workspace": "fdp-p-prd-eus2-db-workspace",
+    "domain": "Fulfillment"
+  },
+  {
+    "workspace": "fdp-p-stg-eus2-db-workspace",
+    "domain": "Fulfillment"
+  },
+  {
+    "workspace": "fdp-sb-snd-eus2-db-workspace",
+    "domain": "Fulfillment"
+  },
+  {
+    "workspace": "fin-aetl-dev-dbxws",
+    "domain": "Finance and Accounting"
+  },
+  {
+    "workspace": "fin-aetl-stage-dbxws",
+    "domain": "Finance and Accounting"
+  },
+  {
+    "workspace": "fin-aetlp-prod-dbxws",
+    "domain": "Finance and Accounting"
+  },
+  {
+    "workspace": "fin-fas-nonprod-dbxws",
+    "domain": "Finance and Accounting"
+  },
+  {
+    "workspace": "finance-aetlp-prod-dbxws",
+    "domain": "Finance and Accounting"
+  },
+  {
+    "workspace": "fst-p-stg-eus2-lmdc-dbx-workspace",
+    "domain": "Finance and Accounting"
+  },
+  {
+    "workspace": "HR-Insights-nonprod",
+    "domain": "HR Human Capital Management"
+  },
+  {
+    "workspace": "HR-Insights-prod",
+    "domain": "HR Human Capital Management"
+  },
+  {
+    "workspace": "hw-cds-dev-eastus2-dbxws",
+    "domain": "Health & Wellness"
+  },
+  {
+    "workspace": "hw-cds-prod-eastus2-dbxws",
+    "domain": "Health & Wellness"
+  },
+  {
+    "workspace": "hw-cds-stage-eastus2-dbxws",
+    "domain": "Health & Wellness"
+  },
+  {
+    "workspace": "hw-cds-test-eastus2-dbxws",
+    "domain": "Health & Wellness"
+  },
+  {
+    "workspace": "kr-cx-dpedbx-10182-d",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "kr-cx-dpedbx-10182-p",
+    "domain": "Customer Experience"
+  },
+  {
+    "workspace": "kr-cx-pznpfm-10345-d",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "kr-cx-tptddi-10377-d",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "kr-sat-dsdrcv-10876-s",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "kr-sat-dsdrcv-10876-t",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "kr-sat-strrcv-10876-d",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "kr-scmfa-tddi-10377-p",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "kr-scmfa-tddi-10377-t",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "merch-mira-dev-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-mira-prod-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-mira-stage-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-mira-test-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-posh-prod-dbxws-dr",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-posh-stg-dbxws-dr",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-poshost-prod-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "merch-poshost-stg-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mkpl-data-dbx-prod-001",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-dev-api-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-dev-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-pre-prod-api-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-pre-prod-api-dr-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-prod-api-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-prod-api-dr-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-prod-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-prod-dr-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-core-data-stage-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-mxdpeverest-dev-ccm-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-mxdpeverest-prod-ccm-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mx-mxdpeverest-stage-ccm-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mxlob-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "mxlob-sepp-dbxws",
+    "domain": "Merchandising"
+  },
+  {
+    "workspace": "ngpos-taas-nonprod",
+    "domain": "Next Gen POS"
+  },
+  {
+    "workspace": "ngpos-taas-prod",
+    "domain": "Next Gen POS"
+  },
+  {
+    "workspace": "ngpos-wrops",
+    "domain": "Next Gen POS"
+  },
+  {
+    "workspace": "ngpos-wrops",
+    "domain": "Next Gen POS"
+  },
+  {
+    "workspace": "ngpos-wrops-nonprod",
+    "domain": "Next Gen POS"
+  },
+  {
+    "workspace": "quicksales-nonprod-dbxws",
+    "domain": "untagged"
+  },
+  {
+    "workspace": "quicksales-prod-dbxws",
+    "domain": "Sales"
+  },
+  {
+    "workspace": "ro-rigel-dev-dbxws",
+    "domain": "Retail Operations"
+  },
+  {
+    "workspace": "ro-rigel-prod-dbxws",
+    "domain": "Retail Operations"
+  },
+  {
+    "workspace": "ro-rigel-test-dbxws",
+    "domain": "Retail Operations"
+  },
+  {
+    "workspace": "rsd-bulkdataservice-nonprod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "rsd-bulkdataservice-prod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "rsd-dsa-bulk-interface-nonprod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "rsd-dsa-bulk-interface-prod",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "rsd-saleshealthmonitoring-nonprod",
+    "domain": "Sales"
+  },
+  {
+    "workspace": "rsd-smo-dailysalesextract-nonprod",
+    "domain": "Sales"
+  },
+  {
+    "workspace": "rsd-smo-dailysalesextract-prod",
+    "domain": "Sales"
+  },
+  {
+    "workspace": "satboh-nonprod-eastus2-1-ws",
+    "domain": "Balance on Hand"
+  },
+  {
+    "workspace": "satboh-prod-ws",
+    "domain": "Balance on Hand"
+  },
+  {
+    "workspace": "sbdb-workspace",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dataeng-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dataeng-sand-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dataeng-sanddr-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dataeng-stage-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dstate-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dste-preprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-dste-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-eamp-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-fcst-dev-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-fcst-stage-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-fcstp-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-ffd-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-ffdp-preprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-ffdp-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-fpd-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-fpd-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-fpd-uat-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-instk-dev-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-instock-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-instock-stage-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-instock-test-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-mddi-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-mddip-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-mddip-uat-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-mfg-db-datamig-deva51",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-mfg-db-datamig-stagea21",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-orap-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-plan-dev-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-plan-dev-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-plan-st-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-plan-st-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-plandr-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-planp-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-repl-dev-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-repl-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-repl-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-rmsid-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-rmsid-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-rmsid01-uat-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-sdtap-preprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-sdtap-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-sdtas-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tddi-data-nonprod",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tddi-nonprod",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tddi-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tddi-np-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tddip-preprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tddip-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tra-sandbox-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-tra-stage-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-trap-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-wddi-nonprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-wddi-preprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-wddi-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-wddp-preprod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "sc-wddp-prod-dbxws",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "scs-jalapeno-dbx-dev",
+    "domain": "Supply Chain"
+  },
+  {
+    "workspace": "storeassociatetechnonprod-ws-1",
+    "domain": "Store"
+  },
+  {
+    "workspace": "test-new-delete",
+    "domain": "untagged"
+  },
+  {
+    "workspace": "transportation-data-nonprod",
+    "domain": "Transportation"
+  },
+  {
+    "workspace": "unity-catalog-prod-centralus-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "unity-catalog-prod-eastus2-dbxws",
+    "domain": "DMP"
+  },
+  {
+    "workspace": "webbdbw-chkout-stage-eastus2-diem",
+    "domain": "DIEM"
+  },
+  {
+    "workspace": "ccm-snoflk-custdp-prod-dbxws",
+    "domain": "DMP"
+  }
+]

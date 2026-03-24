@@ -44,6 +44,18 @@ _default_data_dir = Path(__file__).parent / "data"
 DATA_DIR = Path(os.environ.get("DEMAND_PLAN_DATA_DIR", str(_default_data_dir)))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Seed DATA_DIR from bundled seed_data/ on first run (demo data survives redeployment)
+import shutil as _shutil
+_seed_dir = Path(__file__).parent / "seed_data"
+if _seed_dir.exists():
+    for _user_seed in _seed_dir.iterdir():
+        _dest = DATA_DIR / _user_seed.name
+        _dest.mkdir(parents=True, exist_ok=True)
+        for _f in _user_seed.iterdir():
+            _d = _dest / _f.name
+            if not _d.exists():
+                _shutil.copy2(_f, _d)
+
 # Caches
 _domain_mapping_cache: dict[str, list[dict]] = {}
 _consumption_cache: dict[str, list[dict]] = {}
