@@ -64,6 +64,13 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
   const [mappingLoadedFor, setMappingLoadedFor] = useState<Set<string>>(new Set());
   const loadedAccountsRef = useRef<Set<string>>(new Set());
 
+  // Discount state: current + per-scenario
+  const [currentDiscount, setCurrentDiscount] = useState(0);
+  const [s1Discount, setS1Discount] = useState(0);
+  const [s2Discount, setS2Discount] = useState(0);
+  const [s3Discount, setS3Discount] = useState(0);
+  const scenarioDiscounts = [s1Discount, s2Discount, s3Discount];
+
   const updateStep = (key: string, update: Partial<LoadingStep>) => {
     setLoadingSteps(prev => ({
       ...prev,
@@ -396,10 +403,65 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
             </div>
           </div>
 
-          {/* Header */}
-          <div className="bg-white rounded-lg shadow p-4">
-            <h2 className="text-lg font-bold text-gray-900">Databricks Pricing:</h2>
-            <p className="text-sm text-gray-500">Note: All Prices are Databricks List Price.</p>
+          {/* Header + Discount Panel */}
+          <div className="bg-white rounded-lg shadow p-4 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Databricks Pricing:</h2>
+              <p className="text-sm text-gray-500">Note: All Prices are Databricks List Price.</p>
+            </div>
+
+            {/* Discount inputs */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Discount Configuration</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {([
+                  { label: 'Current Discount', value: currentDiscount, set: setCurrentDiscount, color: '#64748B' },
+                  { label: 'Scenario 1 Discount', value: s1Discount, set: setS1Discount, color: SCENARIO_COLORS[0] },
+                  { label: 'Scenario 2 Discount', value: s2Discount, set: setS2Discount, color: SCENARIO_COLORS[1] },
+                  { label: 'Scenario 3 Discount', value: s3Discount, set: setS3Discount, color: SCENARIO_COLORS[2] },
+                ] as { label: string; value: number; set: (v: number) => void; color: string }[]).map(({ label, value, set, color }) => (
+                  <div key={label} className="space-y-1">
+                    <label className="block text-xs font-medium" style={{ color }}>{label}</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0} max={100} step={0.5}
+                        value={value}
+                        onChange={e => set(parseFloat(e.target.value))}
+                        className="flex-1 h-1.5 rounded-full accent-blue-600"
+                        style={{ accentColor: color }}
+                      />
+                      <div className="flex items-center border border-gray-300 rounded-md overflow-hidden w-16">
+                        <input
+                          type="number"
+                          min={0} max={100} step={0.5}
+                          value={value}
+                          onChange={e => set(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                          className="w-full px-1.5 py-1 text-xs text-right focus:outline-none"
+                        />
+                        <span className="text-xs text-gray-400 pr-1.5">%</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Summary chips */}
+              {(currentDiscount > 0 || s1Discount > 0 || s2Discount > 0 || s3Discount > 0) && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {currentDiscount > 0 && (
+                    <span className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-full font-medium">
+                      Current: {currentDiscount}% off list
+                    </span>
+                  )}
+                  {[s1Discount, s2Discount, s3Discount].map((d, i) => d > 0 && (
+                    <span key={i} className="text-xs px-2 py-1 rounded-full font-medium" style={{ backgroundColor: `${SCENARIO_COLORS[i]}18`, color: SCENARIO_COLORS[i] }}>
+                      S{i + 1}: {d}% off list
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* All 3 Scenarios stacked */}
@@ -455,7 +517,7 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                         );
                       })}
                       <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
-                        <td className="py-2 pr-4 text-sm">Grand Total</td>
+                        <td className="py-2 pr-4 text-sm">Grand Total (List)</td>
                         {Array.from({ length: maxYears }, (_, yi) => {
                           const colTotal = activeAccounts.reduce((s, a) => {
                             const numYears = Math.max(1, Math.floor((a.contractMonths ?? 36) / 12));
@@ -469,6 +531,44 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                           activeAccounts.reduce((s, a) => s + (getAccountGrandTotal(a.name, idx)?.total || 0), 0)
                         )}</td>
                       </tr>
+                      {scenarioDiscounts[idx] > 0 && (
+                        <tr className="border-t font-bold" style={{ backgroundColor: `${SCENARIO_COLORS[idx]}12` }}>
+                          <td className="py-2 pr-4 text-sm" style={{ color: SCENARIO_COLORS[idx] }}>
+                            Discounted Total ({scenarioDiscounts[idx]}% off)
+                          </td>
+                          {Array.from({ length: maxYears }, (_, yi) => {
+                            const colTotal = activeAccounts.reduce((s, a) => {
+                              const numYears = Math.max(1, Math.floor((a.contractMonths ?? 36) / 12));
+                              if (yi >= numYears) return s;
+                              const gt = getAccountGrandTotal(a.name, idx);
+                              return s + (gt?.[`year${yi + 1}`] || 0);
+                            }, 0);
+                            return <td key={yi} className="py-2 text-sm text-right" style={{ color: SCENARIO_COLORS[idx] }}>{formatCurrency(colTotal * (1 - scenarioDiscounts[idx] / 100))}</td>;
+                          })}
+                          <td className="py-2 text-sm text-right" style={{ color: SCENARIO_COLORS[idx] }}>{formatCurrency(
+                            activeAccounts.reduce((s, a) => s + (getAccountGrandTotal(a.name, idx)?.total || 0), 0) * (1 - scenarioDiscounts[idx] / 100)
+                          )}</td>
+                        </tr>
+                      )}
+                      {currentDiscount > 0 && (
+                        <tr className="border-t" style={{ backgroundColor: '#64748B0D' }}>
+                          <td className="py-2 pr-4 text-sm font-medium text-slate-600">
+                            Current Discount ({currentDiscount}% off)
+                          </td>
+                          {Array.from({ length: maxYears }, (_, yi) => {
+                            const colTotal = activeAccounts.reduce((s, a) => {
+                              const numYears = Math.max(1, Math.floor((a.contractMonths ?? 36) / 12));
+                              if (yi >= numYears) return s;
+                              const gt = getAccountGrandTotal(a.name, idx);
+                              return s + (gt?.[`year${yi + 1}`] || 0);
+                            }, 0);
+                            return <td key={yi} className="py-2 text-sm text-right text-slate-600">{formatCurrency(colTotal * (1 - currentDiscount / 100))}</td>;
+                          })}
+                          <td className="py-2 text-sm text-right text-slate-600 font-semibold">{formatCurrency(
+                            activeAccounts.reduce((s, a) => s + (getAccountGrandTotal(a.name, idx)?.total || 0), 0) * (1 - currentDiscount / 100)
+                          )}</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -530,6 +630,36 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                               ))}
                               <td className="py-2 text-sm text-right">{formatCurrency(gt?.total || 0)}</td>
                             </tr>
+                            {scenarioDiscounts[idx] > 0 && (
+                              <tr className="border-t font-bold" style={{ backgroundColor: `${SCENARIO_COLORS[idx]}12` }}>
+                                <td colSpan={2} className="py-2 pr-4 text-sm" style={{ color: SCENARIO_COLORS[idx] }}>
+                                  Discounted Total ({scenarioDiscounts[idx]}% off list)
+                                </td>
+                                {Array.from({ length: numYears }, (_, yi) => (
+                                  <td key={yi} className="py-2 text-sm text-right" style={{ color: SCENARIO_COLORS[idx] }}>
+                                    {formatCurrency((gt?.[`year${yi + 1}`] || 0) * (1 - scenarioDiscounts[idx] / 100))}
+                                  </td>
+                                ))}
+                                <td className="py-2 text-sm text-right" style={{ color: SCENARIO_COLORS[idx] }}>
+                                  {formatCurrency((gt?.total || 0) * (1 - scenarioDiscounts[idx] / 100))}
+                                </td>
+                              </tr>
+                            )}
+                            {currentDiscount > 0 && (
+                              <tr className="border-t" style={{ backgroundColor: '#64748B0D' }}>
+                                <td colSpan={2} className="py-2 pr-4 text-sm font-medium text-slate-600">
+                                  Current Discount ({currentDiscount}% off)
+                                </td>
+                                {Array.from({ length: numYears }, (_, yi) => (
+                                  <td key={yi} className="py-2 text-sm text-right text-slate-600">
+                                    {formatCurrency((gt?.[`year${yi + 1}`] || 0) * (1 - currentDiscount / 100))}
+                                  </td>
+                                ))}
+                                <td className="py-2 text-sm text-right text-slate-600 font-semibold">
+                                  {formatCurrency((gt?.total || 0) * (1 - currentDiscount / 100))}
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                       );
@@ -592,12 +722,42 @@ export default function SummaryTab({ accounts, setAccounts }: Props) {
                                   </tr>
                                 ))}
                                 <tr className="border-t-2 font-bold" style={{ backgroundColor: `${acctColor}12` }}>
-                                  <td colSpan={2} className="py-2 px-3 text-sm" style={{ color: acctColor }}>Total</td>
+                                  <td colSpan={2} className="py-2 px-3 text-sm" style={{ color: acctColor }}>Total (List)</td>
                                   {Array.from({ length: numYears }, (_, yi) => (
                                     <td key={yi} className="py-2 text-sm text-right">{formatCurrency(gt?.[`year${yi + 1}`] || 0)}</td>
                                   ))}
                                   <td className="py-2 pr-3 text-sm text-right">{formatCurrency(gt?.total || 0)}</td>
                                 </tr>
+                                {scenarioDiscounts[idx] > 0 && (
+                                  <tr className="border-t font-bold" style={{ backgroundColor: `${SCENARIO_COLORS[idx]}12` }}>
+                                    <td colSpan={2} className="py-2 px-3 text-sm" style={{ color: SCENARIO_COLORS[idx] }}>
+                                      Discounted ({scenarioDiscounts[idx]}% off)
+                                    </td>
+                                    {Array.from({ length: numYears }, (_, yi) => (
+                                      <td key={yi} className="py-2 text-sm text-right" style={{ color: SCENARIO_COLORS[idx] }}>
+                                        {formatCurrency((gt?.[`year${yi + 1}`] || 0) * (1 - scenarioDiscounts[idx] / 100))}
+                                      </td>
+                                    ))}
+                                    <td className="py-2 pr-3 text-sm text-right" style={{ color: SCENARIO_COLORS[idx] }}>
+                                      {formatCurrency((gt?.total || 0) * (1 - scenarioDiscounts[idx] / 100))}
+                                    </td>
+                                  </tr>
+                                )}
+                                {currentDiscount > 0 && (
+                                  <tr className="border-t" style={{ backgroundColor: '#64748B0D' }}>
+                                    <td colSpan={2} className="py-2 px-3 text-sm font-medium text-slate-600">
+                                      Current Discount ({currentDiscount}% off)
+                                    </td>
+                                    {Array.from({ length: numYears }, (_, yi) => (
+                                      <td key={yi} className="py-2 text-sm text-right text-slate-600">
+                                        {formatCurrency((gt?.[`year${yi + 1}`] || 0) * (1 - currentDiscount / 100))}
+                                      </td>
+                                    ))}
+                                    <td className="py-2 pr-3 text-sm text-right text-slate-600 font-semibold">
+                                      {formatCurrency((gt?.total || 0) * (1 - currentDiscount / 100))}
+                                    </td>
+                                  </tr>
+                                )}
                               </tbody>
                             </table>
                           </div>

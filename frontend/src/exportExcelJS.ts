@@ -1427,6 +1427,19 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
     buildDomainBaselineSheet(wb, ad);
   }
 
+  // Move 'Demand Plan Summary' to first sheet position.
+  // Projection sheets must be built first (row maps for cross-sheet refs), so we reorder after.
+  // ExcelJS _worksheets is 1-indexed (index 0 = undefined).
+  const summarySheet = wb.getWorksheet('Demand Plan Summary');
+  if (summarySheet) {
+    const ws = wb as unknown as { _worksheets: (ExcelJS.Worksheet | undefined)[] };
+    const idx = ws._worksheets.indexOf(summarySheet);
+    if (idx > 1) {
+      ws._worksheets.splice(idx, 1);
+      ws._worksheets.splice(1, 0, summarySheet);
+    }
+  }
+
   const rawBuffer = await wb.xlsx.writeBuffer();
 
   // ExcelJS XML-escapes single quotes in <f> tags (e.g. &apos;Sheet&apos;!A1).
