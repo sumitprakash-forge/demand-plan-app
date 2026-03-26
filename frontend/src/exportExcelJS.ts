@@ -1007,7 +1007,7 @@ function _pivotTableXml(cacheId: number): string {
   </pivotFields>
   <rowFields count="3"><field x="0"/><field x="1"/><field x="2"/></rowFields>
   <colFields count="1"><field x="3"/></colFields>
-  <dataFields count="1"><dataField name="Sum of Amount ($)" fld="4" baseField="0" baseItem="0"/></dataFields>
+  <dataFields count="1"><dataField name="Sum of Amount ($)" fld="4" numFmtId="5" baseField="0" baseItem="0"/></dataFields>
   <pivotTableStyleInfo name="PivotStyleMedium9" showRowHeaders="1" showColHeaders="1" showRowStripes="0" showColStripes="0" showLastColumn="1"/>
 </pivotTableDefinition>`;
 }
