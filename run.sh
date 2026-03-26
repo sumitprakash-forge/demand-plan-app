@@ -1,31 +1,103 @@
 #!/bin/bash
-# Demand Plan App — Start both backend and frontend
+# Demand Plan App — One-command setup + start
+# Usage: bash run.sh
+# Prerequisites (do once, not handled here):
+#   1. databricks auth login ... --profile=logfood
+#   2. gcloud auth login --enable-gdrive-access
+
+set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
+BOLD='\033[1m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-echo "=== Demand Plan App ==="
-echo "Backend: http://localhost:8000"
-echo "Frontend: http://localhost:5173"
+echo ""
+echo -e "${BOLD}=== Demand Plan App ===${NC}"
 echo ""
 
-# Start backend
-echo "Starting FastAPI backend..."
+# ── Check Python ────────────────────────────────────────────────────────────
+if ! command -v python3 &>/dev/null; then
+  echo -e "${RED}ERROR: python3 not found. Install Python 3.10+ from https://python.org${NC}"
+  exit 1
+fi
+PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+echo -e "  Python:  ${GREEN}${PY_VER}${NC}"
+
+# ── Check Node ──────────────────────────────────────────────────────────────
+if ! command -v node &>/dev/null; then
+  echo -e "${RED}ERROR: node not found. Install Node.js 18+ from https://nodejs.org${NC}"
+  exit 1
+fi
+NODE_VER=$(node --version)
+echo -e "  Node:    ${GREEN}${NODE_VER}${NC}"
+
+# ── Install backend dependencies ─────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Installing backend dependencies...${NC}"
 cd "$DIR/server"
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 &
+pip install -q -r requirements.txt
+echo -e "  ${GREEN}Done${NC}"
+
+# ── Install frontend dependencies ────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Installing frontend dependencies...${NC}"
+cd "$DIR/frontend"
+if [ ! -d "node_modules" ]; then
+  npm install --silent
+  echo -e "  ${GREEN}Done${NC}"
+else
+  # Only reinstall if package.json changed since last install
+  if [ "package.json" -nt "node_modules/.package-lock.json" ] 2>/dev/null; then
+    npm install --silent
+    echo -e "  ${GREEN}Updated${NC}"
+  else
+    echo -e "  ${GREEN}Already installed (skipped)${NC}"
+  fi
+fi
+
+# ── Check Databricks auth ─────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Checking Databricks auth (logfood)...${NC}"
+if databricks auth profiles 2>/dev/null | grep -q "logfood"; then
+  echo -e "  ${GREEN}logfood profile found${NC}"
+else
+  echo -e "  ${YELLOW}WARNING: 'logfood' Databricks profile not found.${NC}"
+  echo -e "  Run: databricks auth login https://adb-2548836972759138.18.azuredatabricks.net/ --profile=logfood"
+  echo -e "  The app will start but data loading will fail without this."
+fi
+
+# ── Check gcloud auth ─────────────────────────────────────────────────────────
+echo -e "${BOLD}Checking gcloud auth...${NC}"
+if command -v gcloud &>/dev/null && gcloud auth print-access-token &>/dev/null; then
+  ACCOUNT=$(gcloud config get-value account 2>/dev/null)
+  echo -e "  ${GREEN}Authenticated as: ${ACCOUNT}${NC}"
+else
+  echo -e "  ${YELLOW}WARNING: gcloud not authenticated.${NC}"
+  echo -e "  Run: gcloud auth login --enable-gdrive-access"
+  echo -e "  Domain mapping sheets won't load without this."
+fi
+
+# ── Start servers ─────────────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}Starting servers...${NC}"
+echo -e "  Backend:  ${GREEN}http://localhost:8000${NC}"
+echo -e "  Frontend: ${GREEN}http://localhost:5173${NC}"
+echo ""
+
+cd "$DIR/server"
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 2>&1 &
 BACKEND_PID=$!
 
-# Start frontend
-echo "Starting React frontend..."
 cd "$DIR/frontend"
-npx vite --host 0.0.0.0 --port 5173 &
+npx vite --host 0.0.0.0 --port 5173 2>&1 &
 FRONTEND_PID=$!
 
+echo -e "Open ${BOLD}http://localhost:5173${NC} in your browser."
+echo -e "Press ${BOLD}Ctrl+C${NC} to stop."
 echo ""
-echo "Backend PID: $BACKEND_PID"
-echo "Frontend PID: $FRONTEND_PID"
-echo ""
-echo "Open http://localhost:5173 in your browser."
-echo "Press Ctrl+C to stop both."
 
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT TERM
+trap "echo ''; echo 'Stopping...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT TERM
 wait
