@@ -1022,15 +1022,20 @@ async function injectPivotTables(
   const wbXml    = await zip.files['xl/workbook.xml'].async('string');
   const wbRels   = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
 
-  // rId → target path
+  // rId → target path — parse each <Relationship> element to avoid slash-in-Type-URL pitfall
   const relMap: Record<string, string> = {};
-  const relRe = /Id="([^"]+)"[^/]*Target="([^"]+)"/g;
+  const relElRe = /<Relationship\s[^>]+>/g;
   let m: RegExpExecArray | null;
-  while ((m = relRe.exec(wbRels)) !== null) relMap[m[1]] = m[2];
+  while ((m = relElRe.exec(wbRels)) !== null) {
+    const el = m[0];
+    const idM  = /Id="([^"]+)"/.exec(el);
+    const tgtM = /Target="([^"]+)"/.exec(el);
+    if (idM && tgtM) relMap[idM[1]] = tgtM[1];
+  }
 
   // sheet name → rId
   const sheetRid: Record<string, string> = {};
-  const shRe = /name="([^"]+)"[^/]*r:id="([^"]+)"/g;
+  const shRe = /name="([^"]+)"[^>]*r:id="([^"]+)"/g;
   while ((m = shRe.exec(wbXml)) !== null) sheetRid[m[1]] = m[2];
 
   let maxRid = Math.max(0, ...Object.keys(relMap).map(k => parseInt(k.replace(/\D/g, ''), 10) || 0));
