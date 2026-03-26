@@ -939,47 +939,70 @@ interface PivotSpec {
   sourceSheetName: string;
   pivotSheetName: string;
   rowCount: number; // data rows excluding header
+  numFmtId: number; // 5 = $#,##0  |  3 = #,##0
 }
 
-function buildCloudSkuPivotSource(wb: ExcelJS.Workbook, ad: AccountExportData): PivotSpec {
-  const srcName = safeName(ad.accountName, ' CldSKU-Src');
-  const pvtName = safeName(ad.accountName, ' Cloud-SKU');
+function buildCloudSkuPivotSource(wb: ExcelJS.Workbook, ad: AccountExportData): PivotSpec[] {
+  const specs: PivotSpec[] = [];
 
-  // Hidden flat source table: Cloud | Domain | SKU | Month | Amount ($)
-  const src = wb.addWorksheet(srcName, { state: 'veryHidden' });
-  src.columns = [
-    { key: 'cloud',  width: 12 }, { key: 'domain', width: 26 },
-    { key: 'sku',    width: 42 }, { key: 'month',  width: 12 },
-    { key: 'amount', width: 16 },
-  ];
-  const hdr = src.addRow(['Cloud', 'Domain', 'SKU', 'Month', 'Amount ($)']);
-  applyRowStyle(hdr, headerStyle());
-
-  let rowCount = 0;
-  ad.historicalData.forEach(row => {
-    const cloud  = (row.cloud || ad.wsCloud[row.workspace_name] || 'unknown').toLowerCase();
-    const domain = ad.domainMapping[row.workspace_name]
+  // Shared helper to extract cloud/domain/sku/month
+  const baseFields = (row: any) => ({
+    cloud:  (row.cloud || ad.wsCloud[row.workspace_name] || 'unknown').toLowerCase(),
+    domain: ad.domainMapping[row.workspace_name]
       || ad.domainMapping[(row.workspace_name || '').toLowerCase()]
-      || 'Unmapped';
-    const sku    = row.sku || row.sku_name || 'Unknown';
-    const month  = row.month || '';
-    const amount = parseFloat(row.dollar_dbu_list) || 0;
-    if (month && amount > 0) { src.addRow([cloud, domain, sku, month, amount]); rowCount++; }
+      || 'Unmapped',
+    sku:   row.sku || row.sku_name || 'Unknown',
+    month: row.month || '',
   });
 
-  // Empty output sheet — pivot table is injected as XML
-  const pvt = wb.addWorksheet(pvtName, { properties: { tabColor: { argb: 'FF0891B2' } } });
-  addSheetTitle(pvt, `${ad.accountName} — Cloud → Domain → SKU`,
+  // ── $DBU pivot (dollar_dbu_list) ──────────────────────────────────────────
+  const dSrcName = safeName(ad.accountName, ' CldSKU$-Src');
+  const dPvtName = safeName(ad.accountName, ' Cloud-SKU $DBU');
+  const dSrc = wb.addWorksheet(dSrcName, { state: 'veryHidden' });
+  dSrc.columns = [
+    { key: 'cloud', width: 12 }, { key: 'domain', width: 26 },
+    { key: 'sku',   width: 42 }, { key: 'month',  width: 12 }, { key: 'val', width: 16 },
+  ];
+  applyRowStyle(dSrc.addRow(['Cloud', 'Domain', 'SKU', 'Month', 'Amount ($)']), headerStyle());
+  let dRows = 0;
+  ad.historicalData.forEach(row => {
+    const { cloud, domain, sku, month } = baseFields(row);
+    const val = parseFloat(row.dollar_dbu_list) || 0;
+    if (month && val > 0) { dSrc.addRow([cloud, domain, sku, month, val]); dRows++; }
+  });
+  const dPvt = wb.addWorksheet(dPvtName, { properties: { tabColor: { argb: 'FF0891B2' } } });
+  addSheetTitle(dPvt, `${ad.accountName} — Cloud → Domain → SKU ($DBU)`,
     'Pivot: Cloud/Domain/SKU rows × Month columns · Refresh on open in Excel', 16);
+  specs.push({ sourceSheetName: dSrcName, pivotSheetName: dPvtName, rowCount: dRows, numFmtId: 5 });
 
-  return { sourceSheetName: srcName, pivotSheetName: pvtName, rowCount };
+  // ── DBU pivot (total_dbus) ────────────────────────────────────────────────
+  const bSrcName = safeName(ad.accountName, ' CldSKUd-Src');
+  const bPvtName = safeName(ad.accountName, ' Cloud-SKU DBU');
+  const bSrc = wb.addWorksheet(bSrcName, { state: 'veryHidden' });
+  bSrc.columns = [
+    { key: 'cloud', width: 12 }, { key: 'domain', width: 26 },
+    { key: 'sku',   width: 42 }, { key: 'month',  width: 12 }, { key: 'val', width: 16 },
+  ];
+  applyRowStyle(bSrc.addRow(['Cloud', 'Domain', 'SKU', 'Month', 'DBU']), headerStyle());
+  let bRows = 0;
+  ad.historicalData.forEach(row => {
+    const { cloud, domain, sku, month } = baseFields(row);
+    const val = parseFloat(row.total_dbus) || 0;
+    if (month && val > 0) { bSrc.addRow([cloud, domain, sku, month, val]); bRows++; }
+  });
+  const bPvt = wb.addWorksheet(bPvtName, { properties: { tabColor: { argb: 'FF7C3AED' } } });
+  addSheetTitle(bPvt, `${ad.accountName} — Cloud → Domain → SKU (DBU)`,
+    'Pivot: Cloud/Domain/SKU rows × Month columns · Refresh on open in Excel', 16);
+  specs.push({ sourceSheetName: bSrcName, pivotSheetName: bPvtName, rowCount: bRows, numFmtId: 3 });
+
+  return specs;
 }
 
 function _escXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function _pivotCacheXml(sourceSheet: string, rowCount: number): string {
+function _pivotCacheXml(sourceSheet: string, rowCount: number, valueField: string): string {
   const range = `A1:E${rowCount + 1}`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <pivotCacheDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" refreshedBy="Excel" refreshedDate="1" refreshedVersion="6" createdVersion="6" recordCount="0" refreshOnLoad="1">
@@ -989,12 +1012,12 @@ function _pivotCacheXml(sourceSheet: string, rowCount: number): string {
     <cacheField name="Domain" numFmtId="0"><sharedItems/></cacheField>
     <cacheField name="SKU" numFmtId="0"><sharedItems/></cacheField>
     <cacheField name="Month" numFmtId="0"><sharedItems/></cacheField>
-    <cacheField name="Amount ($)" numFmtId="0"><sharedItems containsNumber="1" containsNonDate="1" minValue="0" maxValue="0"/></cacheField>
+    <cacheField name="${_escXml(valueField)}" numFmtId="0"><sharedItems containsNumber="1" containsNonDate="1" minValue="0" maxValue="0"/></cacheField>
   </cacheFields>
 </pivotCacheDefinition>`;
 }
 
-function _pivotTableXml(cacheId: number): string {
+function _pivotTableXml(cacheId: number, valueField: string, numFmtId: number): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <pivotTableDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="PivotTable${cacheId}" cacheId="${cacheId}" applyNumberFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyAlignmentFormats="0" applyWidthHeightFormats="1" dataCaption="Values" updatedVersion="6" minRefreshableVersion="3" useAutoFormatting="1" itemPrintTitles="1" createdVersion="6" indent="2" outline="1" outlineData="1" compact="0" compactData="0" gridDropZones="0">
   <location ref="A3" firstHeaderRow="1" firstDataRow="2" firstDataCol="1"/>
@@ -1007,7 +1030,7 @@ function _pivotTableXml(cacheId: number): string {
   </pivotFields>
   <rowFields count="3"><field x="0"/><field x="1"/><field x="2"/></rowFields>
   <colFields count="1"><field x="3"/></colFields>
-  <dataFields count="1"><dataField name="Sum of Amount ($)" fld="4" numFmtId="5" baseField="0" baseItem="0"/></dataFields>
+  <dataFields count="1"><dataField name="Sum of ${_escXml(valueField)}" fld="4" numFmtId="${numFmtId}" baseField="0" baseItem="0"/></dataFields>
   <pivotTableStyleInfo name="PivotStyleMedium9" showRowHeaders="1" showColHeaders="1" showRowStripes="0" showColStripes="0" showLastColumn="1"/>
 </pivotTableDefinition>`;
 }
@@ -1054,12 +1077,15 @@ async function injectPivotTables(
     const pvtFile   = pvtTarget?.split('/').pop(); // "sheetN.xml"
     if (!pvtFile) continue;
 
+    // Derive value field name from spec (5=$  3=DBU)
+    const valueField = spec.numFmtId === 5 ? 'Amount ($)' : 'DBU';
+
     // Pivot cache definition
     zip.file(`xl/pivotCache/pivotCacheDefinition${cacheId}.xml`,
-      _pivotCacheXml(spec.sourceSheetName, spec.rowCount));
+      _pivotCacheXml(spec.sourceSheetName, spec.rowCount, valueField));
 
     // Pivot table definition
-    zip.file(`xl/pivotTables/pivotTable${cacheId}.xml`, _pivotTableXml(cacheId));
+    zip.file(`xl/pivotTables/pivotTable${cacheId}.xml`, _pivotTableXml(cacheId, valueField, spec.numFmtId));
 
     // Pivot table → cache rels
     zip.file(`xl/pivotTables/_rels/pivotTable${cacheId}.xml.rels`,
@@ -1588,7 +1614,7 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   for (const ad of opts.accountsData) {
     buildHistoricalDomainSheet(wb, ad);
     buildHistoricalSkuSheet(wb, ad);
-    pivotSpecs.push(buildCloudSkuPivotSource(wb, ad));
+    pivotSpecs.push(...buildCloudSkuPivotSource(wb, ad));
   }
 
   // 5. Per-account detail sheets
