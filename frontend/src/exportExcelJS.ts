@@ -882,8 +882,8 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   const cloudData: Record<string, Record<string, Record<string, Record<string, number>>>> = {};
 
   ad.historicalData.forEach(row => {
-    const cloud  = ad.wsCloud[row.workspace_name] || 'unknown';
-    const domain = ad.domainMapping[row.workspace_name] || 'Unmapped';
+    const cloud  = (row.cloud || ad.wsCloud[row.workspace_name] || 'unknown').toLowerCase();
+    const domain = ad.domainMapping[row.workspace_name] || ad.domainMapping[row.workspace_name?.toLowerCase()] || 'Unmapped';
     const sku    = row.sku || row.sku_name || 'Unknown';
     const dbu    = parseFloat(row.dollar_dbu_list) || 0;
     cloudData[cloud] ??= {};
@@ -931,6 +931,170 @@ function buildCloudDomainSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   });
 
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
+}
+
+// ─── Cloud → Domain → SKU: pivot source builder ───────────────────────────────
+
+interface PivotSpec {
+  sourceSheetName: string;
+  pivotSheetName: string;
+  rowCount: number; // data rows excluding header
+}
+
+function buildCloudSkuPivotSource(wb: ExcelJS.Workbook, ad: AccountExportData): PivotSpec {
+  const srcName = safeName(ad.accountName, ' CldSKU-Src');
+  const pvtName = safeName(ad.accountName, ' Cloud-SKU');
+
+  // Hidden flat source table: Cloud | Domain | SKU | Month | Amount ($)
+  const src = wb.addWorksheet(srcName, { state: 'veryHidden' });
+  src.columns = [
+    { key: 'cloud',  width: 12 }, { key: 'domain', width: 26 },
+    { key: 'sku',    width: 42 }, { key: 'month',  width: 12 },
+    { key: 'amount', width: 16 },
+  ];
+  const hdr = src.addRow(['Cloud', 'Domain', 'SKU', 'Month', 'Amount ($)']);
+  applyRowStyle(hdr, headerStyle());
+
+  let rowCount = 0;
+  ad.historicalData.forEach(row => {
+    const cloud  = (row.cloud || ad.wsCloud[row.workspace_name] || 'unknown').toLowerCase();
+    const domain = ad.domainMapping[row.workspace_name]
+      || ad.domainMapping[(row.workspace_name || '').toLowerCase()]
+      || 'Unmapped';
+    const sku    = row.sku || row.sku_name || 'Unknown';
+    const month  = row.month || '';
+    const amount = parseFloat(row.dollar_dbu_list) || 0;
+    if (month && amount > 0) { src.addRow([cloud, domain, sku, month, amount]); rowCount++; }
+  });
+
+  // Empty output sheet — pivot table is injected as XML
+  const pvt = wb.addWorksheet(pvtName, { properties: { tabColor: { argb: 'FF0891B2' } } });
+  addSheetTitle(pvt, `${ad.accountName} — Cloud → Domain → SKU`,
+    'Pivot: Cloud/Domain/SKU rows × Month columns · Refresh on open in Excel', 16);
+
+  return { sourceSheetName: srcName, pivotSheetName: pvtName, rowCount };
+}
+
+function _escXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function _pivotCacheXml(sourceSheet: string, rowCount: number): string {
+  const range = `A1:E${rowCount + 1}`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<pivotCacheDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" refreshedBy="Excel" refreshedDate="1" refreshedVersion="6" createdVersion="6" recordCount="0" refreshOnLoad="1">
+  <cacheSource type="worksheet"><worksheetSource ref="${range}" sheet="${_escXml(sourceSheet)}"/></cacheSource>
+  <cacheFields count="5">
+    <cacheField name="Cloud" numFmtId="0"><sharedItems/></cacheField>
+    <cacheField name="Domain" numFmtId="0"><sharedItems/></cacheField>
+    <cacheField name="SKU" numFmtId="0"><sharedItems/></cacheField>
+    <cacheField name="Month" numFmtId="0"><sharedItems/></cacheField>
+    <cacheField name="Amount ($)" numFmtId="0"><sharedItems containsNumber="1" containsNonDate="1" minValue="0" maxValue="0"/></cacheField>
+  </cacheFields>
+</pivotCacheDefinition>`;
+}
+
+function _pivotTableXml(cacheId: number): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<pivotTableDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="PivotTable${cacheId}" cacheId="${cacheId}" applyNumberFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyAlignmentFormats="0" applyWidthHeightFormats="1" dataCaption="Values" updatedVersion="6" minRefreshableVersion="3" useAutoFormatting="1" itemPrintTitles="1" createdVersion="6" indent="2" outline="1" outlineData="1" compact="0" compactData="0" gridDropZones="0">
+  <location ref="A3" firstHeaderRow="1" firstDataRow="2" firstDataCol="1"/>
+  <pivotFields count="5">
+    <pivotField axis="axisRow" showAll="0" outline="1" subtotalTop="1" compact="0"><items count="1"><item t="default"/></items></pivotField>
+    <pivotField axis="axisRow" showAll="0" outline="1" subtotalTop="1" compact="0"><items count="1"><item t="default"/></items></pivotField>
+    <pivotField axis="axisRow" showAll="0" outline="0" subtotalTop="0" compact="0" defaultSubtotal="0"><items count="0"/></pivotField>
+    <pivotField axis="axisCol" showAll="0" compact="0"><items count="1"><item t="default"/></items></pivotField>
+    <pivotField dataField="1" showAll="0" compact="0"/>
+  </pivotFields>
+  <rowFields count="3"><field x="0"/><field x="1"/><field x="2"/></rowFields>
+  <colFields count="1"><field x="3"/></colFields>
+  <dataFields count="1"><dataField name="Sum of Amount ($)" fld="4" baseField="0" baseItem="0"/></dataFields>
+  <pivotTableStyleInfo name="PivotStyleMedium9" showRowHeaders="1" showColHeaders="1" showRowStripes="0" showColStripes="0" showLastColumn="1"/>
+</pivotTableDefinition>`;
+}
+
+async function injectPivotTables(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  zip: any,
+  specs: PivotSpec[]
+): Promise<void> {
+  if (!specs.length) return;
+
+  const wbXml    = await zip.files['xl/workbook.xml'].async('string');
+  const wbRels   = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
+
+  // rId → target path
+  const relMap: Record<string, string> = {};
+  const relRe = /Id="([^"]+)"[^/]*Target="([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = relRe.exec(wbRels)) !== null) relMap[m[1]] = m[2];
+
+  // sheet name → rId
+  const sheetRid: Record<string, string> = {};
+  const shRe = /name="([^"]+)"[^/]*r:id="([^"]+)"/g;
+  while ((m = shRe.exec(wbXml)) !== null) sheetRid[m[1]] = m[2];
+
+  let maxRid = Math.max(0, ...Object.keys(relMap).map(k => parseInt(k.replace(/\D/g, ''), 10) || 0));
+  let ctXml  = await zip.files['[Content_Types].xml'].async('string');
+  let curRels = wbRels;
+  let curWb   = wbXml;
+
+  for (let i = 0; i < specs.length; i++) {
+    const spec    = specs[i];
+    const cacheId = i + 1;
+    const cacheRid = `rId${++maxRid}`;
+
+    const pvtRid    = sheetRid[spec.pivotSheetName];
+    if (!pvtRid) continue;
+    const pvtTarget = relMap[pvtRid];              // "worksheets/sheetN.xml"
+    const pvtFile   = pvtTarget?.split('/').pop(); // "sheetN.xml"
+    if (!pvtFile) continue;
+
+    // Pivot cache definition
+    zip.file(`xl/pivotCache/pivotCacheDefinition${cacheId}.xml`,
+      _pivotCacheXml(spec.sourceSheetName, spec.rowCount));
+
+    // Pivot table definition
+    zip.file(`xl/pivotTables/pivotTable${cacheId}.xml`, _pivotTableXml(cacheId));
+
+    // Pivot table → cache rels
+    zip.file(`xl/pivotTables/_rels/pivotTable${cacheId}.xml.rels`,
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition" Target="../pivotCache/pivotCacheDefinition${cacheId}.xml"/></Relationships>`);
+
+    // Worksheet → pivot table rels
+    const wsRelsPath = `xl/worksheets/_rels/${pvtFile}.rels`;
+    const pvtRelEntry = `<Relationship Id="rId_pv${cacheId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable" Target="../pivotTables/pivotTable${cacheId}.xml"/>`;
+    if (zip.files[wsRelsPath]) {
+      const ex = await zip.files[wsRelsPath].async('string');
+      zip.file(wsRelsPath, ex.replace('</Relationships>', `${pvtRelEntry}</Relationships>`));
+    } else {
+      zip.file(wsRelsPath, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${pvtRelEntry}</Relationships>`);
+    }
+
+    // Workbook rels: add pivot cache
+    curRels = curRels.replace('</Relationships>',
+      `<Relationship Id="${cacheRid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition" Target="pivotCache/pivotCacheDefinition${cacheId}.xml"/></Relationships>`);
+
+    // Workbook.xml: add <pivotCache> entry
+    const pvtCacheEl = `<pivotCache cacheId="${cacheId}" r:id="${cacheRid}"/>`;
+    if (curWb.includes('<pivotCaches>')) {
+      curWb = curWb.replace('</pivotCaches>', `${pvtCacheEl}</pivotCaches>`);
+    } else {
+      curWb = curWb.replace('</workbook>', `<pivotCaches>${pvtCacheEl}</pivotCaches></workbook>`);
+    }
+
+    // Content types
+    const addCT = (part: string, ct: string) => {
+      if (!ctXml.includes(part)) ctXml = ctXml.replace('</Types>', `<Override PartName="${part}" ContentType="${ct}"/></Types>`);
+    };
+    addCT(`/xl/pivotCache/pivotCacheDefinition${cacheId}.xml`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml');
+    addCT(`/xl/pivotTables/pivotTable${cacheId}.xml`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml');
+  }
+
+  zip.file('[Content_Types].xml', ctXml);
+  zip.file('xl/_rels/workbook.xml.rels', curRels);
+  zip.file('xl/workbook.xml', curWb);
 }
 
 // ─── Size tier helper ─────────────────────────────────────────────────────────
@@ -1414,11 +1578,12 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   // 2. Summary sheet (references projection sheet cells)
   await buildSummarySheet(wb, opts, projRowMaps);
 
-  // 3. Historical sheets: one set per account
+  // 3. Historical sheets + pivot source: one set per account
+  const pivotSpecs: PivotSpec[] = [];
   for (const ad of opts.accountsData) {
     buildHistoricalDomainSheet(wb, ad);
     buildHistoricalSkuSheet(wb, ad);
-    buildCloudDomainSkuSheet(wb, ad);
+    pivotSpecs.push(buildCloudSkuPivotSource(wb, ad));
   }
 
   // 5. Per-account detail sheets
@@ -1447,6 +1612,10 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
   // so cross-sheet references break. Post-process the ZIP to unescape them.
   const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(rawBuffer);
+
+  // Inject pivot table XML for each account's Cloud→Domain→SKU sheet
+  await injectPivotTables(zip, pivotSpecs);
+
   const wsFiles = Object.keys(zip.files).filter(
     n => n.startsWith('xl/worksheets/') && n.endsWith('.xml')
   );
