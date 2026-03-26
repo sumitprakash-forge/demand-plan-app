@@ -13,8 +13,9 @@ TEST_REPORT.txt
 # Screenshots
 screenshots/
 
-# Markdown docs (keep README only if needed — removing all)
+# Markdown docs (exclude all except README)
 *.md
+!README.md
 
 # node_modules (already listed but was committed before — force untrack)
 frontend/node_modules/
