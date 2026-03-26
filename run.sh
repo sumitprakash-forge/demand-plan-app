@@ -38,7 +38,7 @@ echo -e "  Node:    ${GREEN}${NODE_VER}${NC}"
 echo ""
 echo -e "${BOLD}Installing backend dependencies...${NC}"
 cd "$DIR/server"
-pip install -q -r requirements.txt
+pip3 install -q -r requirements.txt
 echo -e "  ${GREEN}Done${NC}"
 
 # ── Install frontend dependencies ────────────────────────────────────────────
