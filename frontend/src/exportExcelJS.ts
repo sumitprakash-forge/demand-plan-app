@@ -803,34 +803,56 @@ function buildHistoricalDomainSheet(wb: ExcelJS.Workbook, ad: AccountExportData)
   });
   const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
   const monthDisplays = months.map(histMonthLabel);
-  const domainMonthly: Record<string, Record<string, number>> = {};
+
+  // ── $DBU section ──────────────────────────────────────────────────────────
+  const domainDollar: Record<string, Record<string, number>> = {};
+  const domainDbu:    Record<string, Record<string, number>> = {};
   ad.historicalData.forEach(row => {
     const domain = ad.domainMapping[row.workspace_name] || 'Unmapped';
-    const dbu = parseFloat(row.dollar_dbu_list) || 0;
-    if (!domainMonthly[domain]) domainMonthly[domain] = {};
-    domainMonthly[domain][row.month] = (domainMonthly[domain][row.month] || 0) + dbu;
+    if (!domainDollar[domain]) domainDollar[domain] = {};
+    if (!domainDbu[domain])    domainDbu[domain]    = {};
+    domainDollar[domain][row.month] = (domainDollar[domain][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
+    domainDbu[domain][row.month]    = (domainDbu[domain][row.month]    || 0) + (parseFloat(row.total_dbus)      || 0);
   });
-  const domainKeys = Object.keys(domainMonthly).sort(
-    (a, b) => Object.values(domainMonthly[b]).reduce((s, v) => s + v, 0) -
-              Object.values(domainMonthly[a]).reduce((s, v) => s + v, 0)
+  const domainKeys = Object.keys(domainDollar).sort(
+    (a, b) => Object.values(domainDollar[b]).reduce((s, v) => s + v, 0) -
+              Object.values(domainDollar[a]).reduce((s, v) => s + v, 0)
   );
 
   ws.columns = [{ key: 'domain', width: 32 }, ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 }];
-  addSheetTitle(ws, `${ad.accountName} — Historical by Domain`, 'T12M actuals grouped by domain', months.length + 2);
+  addSheetTitle(ws, `${ad.accountName} — Historical by Domain`, 'T12M actuals grouped by domain  |  $DBU (list price) then DBU', months.length + 2);
 
-  const hrow = ws.addRow(['Domain', ...monthDisplays, 'Total']);
+  // $DBU header + rows
+  const hrow = ws.addRow(['Domain ($DBU)', ...monthDisplays, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
   domainKeys.forEach((d, idx) => {
-    const vals = months.map(m => domainMonthly[d][m] || 0);
+    const vals = months.map(m => domainDollar[d][m] || 0);
     const r = ws.addRow([d, ...vals, vals.reduce((s, v) => s + v, 0)]);
     applyRowStyle(r, dataStyle(idx % 2 === 1), USD_FMT);
   });
 
-  const grandVals = months.map(m => domainKeys.reduce((s, d) => s + (domainMonthly[d][m] || 0), 0));
-  const gr = ws.addRow(['Grand Total', ...grandVals, grandVals.reduce((s, v) => s + v, 0)]);
+  const grandDollar = months.map(m => domainKeys.reduce((s, d) => s + (domainDollar[d][m] || 0), 0));
+  const gr = ws.addRow(['Grand Total', ...grandDollar, grandDollar.reduce((s, v) => s + v, 0)]);
   applyRowStyle(gr, totalStyle(GRAND_BG));
   gr.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = USD_FMT; });
+
+  // ── DBU section ───────────────────────────────────────────────────────────
+  ws.addRow([]); // blank spacer
+
+  const hrowDbu = ws.addRow(['Domain (DBU)', ...monthDisplays, 'Total']);
+  applyRowStyle(hrowDbu, headerStyle('1E3A5F', 'FFFFFF')); hrowDbu.height = 20;
+
+  domainKeys.forEach((d, idx) => {
+    const vals = months.map(m => domainDbu[d][m] || 0);
+    const r = ws.addRow([d, ...vals, vals.reduce((s, v) => s + v, 0)]);
+    applyRowStyle(r, dataStyle(idx % 2 === 1), '#,##0');
+  });
+
+  const grandDbu = months.map(m => domainKeys.reduce((s, d) => s + (domainDbu[d][m] || 0), 0));
+  const grDbu = ws.addRow(['Grand Total', ...grandDbu, grandDbu.reduce((s, v) => s + v, 0)]);
+  applyRowStyle(grDbu, totalStyle(GRAND_BG));
+  grDbu.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = '#,##0'; });
 
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
@@ -841,34 +863,56 @@ function buildHistoricalSkuSheet(wb: ExcelJS.Workbook, ad: AccountExportData) {
   });
   const months = [...new Set(ad.historicalData.map(r => r.month))].sort();
   const monthDisplays = months.map(histMonthLabel);
-  const skuMonthly: Record<string, Record<string, number>> = {};
+
+  // ── $DBU section ──────────────────────────────────────────────────────────
+  const skuDollar: Record<string, Record<string, number>> = {};
+  const skuDbu:    Record<string, Record<string, number>> = {};
   ad.historicalData.forEach(row => {
     const sku = row.sku || row.sku_name || 'Unknown';
-    const dbu = parseFloat(row.dollar_dbu_list) || 0;
-    if (!skuMonthly[sku]) skuMonthly[sku] = {};
-    skuMonthly[sku][row.month] = (skuMonthly[sku][row.month] || 0) + dbu;
+    if (!skuDollar[sku]) skuDollar[sku] = {};
+    if (!skuDbu[sku])    skuDbu[sku]    = {};
+    skuDollar[sku][row.month] = (skuDollar[sku][row.month] || 0) + (parseFloat(row.dollar_dbu_list) || 0);
+    skuDbu[sku][row.month]    = (skuDbu[sku][row.month]    || 0) + (parseFloat(row.total_dbus)      || 0);
   });
-  const skuKeys = Object.keys(skuMonthly).sort(
-    (a, b) => Object.values(skuMonthly[b]).reduce((s, v) => s + v, 0) -
-              Object.values(skuMonthly[a]).reduce((s, v) => s + v, 0)
+  const skuKeys = Object.keys(skuDollar).sort(
+    (a, b) => Object.values(skuDollar[b]).reduce((s, v) => s + v, 0) -
+              Object.values(skuDollar[a]).reduce((s, v) => s + v, 0)
   );
 
   ws.columns = [{ key: 'sku', width: 48 }, ...months.map(m => ({ key: m, width: 13 })), { key: 'total', width: 16 }];
-  addSheetTitle(ws, `${ad.accountName} — Historical by SKU`, 'T12M actuals grouped by Databricks SKU', months.length + 2);
+  addSheetTitle(ws, `${ad.accountName} — Historical by SKU`, 'T12M actuals grouped by Databricks SKU  |  $DBU (list price) then DBU', months.length + 2);
 
-  const hrow = ws.addRow(['SKU', ...monthDisplays, 'Total']);
+  // $DBU header + rows
+  const hrow = ws.addRow(['SKU ($DBU)', ...monthDisplays, 'Total']);
   applyRowStyle(hrow, headerStyle()); hrow.height = 20;
 
   skuKeys.forEach((s, idx) => {
-    const vals = months.map(m => skuMonthly[s][m] || 0);
+    const vals = months.map(m => skuDollar[s][m] || 0);
     const r = ws.addRow([s, ...vals, vals.reduce((a, v) => a + v, 0)]);
     applyRowStyle(r, dataStyle(idx % 2 === 1), USD_FMT);
   });
 
-  const grandVals = months.map(m => skuKeys.reduce((s, k) => s + (skuMonthly[k][m] || 0), 0));
-  const gr = ws.addRow(['Grand Total', ...grandVals, grandVals.reduce((s, v) => s + v, 0)]);
+  const grandDollar = months.map(m => skuKeys.reduce((s, k) => s + (skuDollar[k][m] || 0), 0));
+  const gr = ws.addRow(['Grand Total', ...grandDollar, grandDollar.reduce((s, v) => s + v, 0)]);
   applyRowStyle(gr, totalStyle(GRAND_BG));
   gr.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = USD_FMT; });
+
+  // ── DBU section ───────────────────────────────────────────────────────────
+  ws.addRow([]); // blank spacer
+
+  const hrowDbu = ws.addRow(['SKU (DBU)', ...monthDisplays, 'Total']);
+  applyRowStyle(hrowDbu, headerStyle('1E3A5F', 'FFFFFF')); hrowDbu.height = 20;
+
+  skuKeys.forEach((s, idx) => {
+    const vals = months.map(m => skuDbu[s][m] || 0);
+    const r = ws.addRow([s, ...vals, vals.reduce((a, v) => a + v, 0)]);
+    applyRowStyle(r, dataStyle(idx % 2 === 1), '#,##0');
+  });
+
+  const grandDbu = months.map(m => skuKeys.reduce((s, k) => s + (skuDbu[k][m] || 0), 0));
+  const grDbu = ws.addRow(['Grand Total', ...grandDbu, grandDbu.reduce((s, v) => s + v, 0)]);
+  applyRowStyle(grDbu, totalStyle(GRAND_BG));
+  grDbu.eachCell((c) => { if (typeof c.value === 'number') c.numFmt = '#,##0'; });
 
   ws.views = [{ state: 'frozen', ySplit: 4, showGridLines: true }];
 }
