@@ -7,15 +7,15 @@ server/data/
 
 # Docs, screenshots, and PDFs
 docs/
-USER_GUIDE.pdf
 TEST_REPORT.txt
 
 # Screenshots
 screenshots/
 
-# Markdown docs (exclude all except README)
+# Markdown docs (exclude all except README and USER_GUIDE)
 *.md
 !README.md
+!USER_GUIDE.md
 
 # node_modules (already listed but was committed before — force untrack)
 frontend/node_modules/
