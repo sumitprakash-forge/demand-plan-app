@@ -58,28 +58,6 @@ else
   fi
 fi
 
-# ── Check Databricks auth ─────────────────────────────────────────────────────
-echo ""
-echo -e "${BOLD}Checking Databricks auth (logfood)...${NC}"
-if databricks auth profiles 2>/dev/null | grep -q "logfood"; then
-  echo -e "  ${GREEN}logfood profile found${NC}"
-else
-  echo -e "  ${YELLOW}WARNING: 'logfood' Databricks profile not found.${NC}"
-  echo -e "  Run: databricks auth login https://adb-2548836972759138.18.azuredatabricks.net/ --profile=logfood"
-  echo -e "  The app will start but data loading will fail without this."
-fi
-
-# ── Check gcloud auth ─────────────────────────────────────────────────────────
-echo -e "${BOLD}Checking gcloud auth...${NC}"
-if command -v gcloud &>/dev/null && gcloud auth print-access-token &>/dev/null; then
-  ACCOUNT=$(gcloud config get-value account 2>/dev/null)
-  echo -e "  ${GREEN}Authenticated as: ${ACCOUNT}${NC}"
-else
-  echo -e "  ${YELLOW}WARNING: gcloud not authenticated.${NC}"
-  echo -e "  Run: gcloud auth login --enable-gdrive-access"
-  echo -e "  Domain mapping sheets won't load without this."
-fi
-
 # ── Start servers ─────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}Starting servers...${NC}"

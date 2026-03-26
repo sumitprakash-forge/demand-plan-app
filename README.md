@@ -13,21 +13,7 @@ git clone https://github.com/sumitprakash-forge/demand-plan-app.git
 cd demand-plan-app
 ```
 
-### 2. Authenticate (one-time, per machine)
-
-**Databricks (Logfood):**
-```bash
-databricks auth login https://adb-2548836972759138.18.azuredatabricks.net/ --profile=logfood
-```
-
-**Google (for domain mapping sheets):**
-```bash
-gcloud auth login --enable-gdrive-access
-```
-
-> If `gcloud` isn't installed: `brew install --cask google-cloud-sdk` (macOS)
-
-### 3. Run
+### 2. Run
 
 ```bash
 bash run.sh
@@ -37,6 +23,10 @@ bash run.sh
 
 Open **http://localhost:5173** in your browser. Press **Ctrl+C** to stop.
 
+### 3. Login
+
+Enter your Logfood workspace host and Databricks PAT in the login screen.
+
 ---
 
 ## Prerequisites
@@ -45,21 +35,6 @@ Open **http://localhost:5173** in your browser. Press **Ctrl+C** to stop.
 |------|---------|
 | Python 3.10+ | [python.org](https://python.org) |
 | Node.js 18+ | [nodejs.org](https://nodejs.org) |
-| Databricks CLI | `brew install databricks` |
-| gcloud CLI | `brew install --cask google-cloud-sdk` |
-
----
-
-## Domain Mapping Sheet
-
-The app accepts a Google Sheets URL to map workspaces → business domains. Required columns:
-
-| account_name | cloudtype | org | sfdc_workspace_name | Domain |
-|---|---|---|---|---|
-| Walmart | gcp | Sams Club | prod-sams-cdp-platform | CDP Platform |
-| Walmart | azure | Sams Club | prod-supplychain-data | Supply Chain |
-
-The sheet must be shared with your authenticated Google account.
 
 ---
 
@@ -100,6 +75,5 @@ demand-plan-app/
 └── server/
     ├── main.py             # FastAPI routes + cache
     ├── logfood.py          # Logfood SQL via Databricks SDK
-    ├── sheets.py           # Google Sheets domain mapping
     └── models.py           # Pydantic models
 ```
