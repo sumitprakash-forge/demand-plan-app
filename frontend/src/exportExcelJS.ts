@@ -1429,15 +1429,15 @@ async function buildExcelBlob(opts: ExportOptions): Promise<{ blob: Blob; filena
 
   // Move 'Demand Plan Summary' to first sheet position.
   // Projection sheets must be built first (row maps for cross-sheet refs), so we reorder after.
-  // ExcelJS _worksheets is 1-indexed (index 0 = undefined).
+  // ExcelJS sorts worksheets by orderNo; shift all earlier sheets up by 1, set Summary to 0.
   const summarySheet = wb.getWorksheet('Demand Plan Summary');
   if (summarySheet) {
-    const ws = wb as unknown as { _worksheets: (ExcelJS.Worksheet | undefined)[] };
-    const idx = ws._worksheets.indexOf(summarySheet);
-    if (idx > 1) {
-      ws._worksheets.splice(idx, 1);
-      ws._worksheets.splice(1, 0, summarySheet);
-    }
+    const summaryOrderNo = (summarySheet as unknown as { orderNo: number }).orderNo;
+    wb.worksheets.forEach(ws => {
+      const w = ws as unknown as { orderNo: number };
+      if (w.orderNo < summaryOrderNo) w.orderNo += 1;
+    });
+    (summarySheet as unknown as { orderNo: number }).orderNo = 0;
   }
 
   const rawBuffer = await wb.xlsx.writeBuffer();
